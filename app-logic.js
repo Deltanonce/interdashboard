@@ -1,16 +1,27 @@
 ﻿
 // ===== STATE =====
-let scenarios = SCENARIOS.map(s => ({ ...s }));
+let scenarios = (typeof SCENARIOS !== 'undefined') ? SCENARIOS.map(s => ({ ...s })) : [];
 let currentThreatLevel = 4, refreshCount = 0, countdownSeconds = 300;
 let countdownTimer = null, isLoading = false, leafletMap = null;
 let mapLayers = {}, radarChart = null, currentPerspective = 'iran';
 let activeFeedFilter = 'all', credFilterOn = false, uvVisible = false;
 
+// Timers for memory management
+let masterClockTimer = null;
+let liveNewsTimer = null;
+let newsInjectTimer = null;
+let bootFailsafeTimer = null;
+
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
-    runBootSequence();
+    runBootSequence().catch(e => { });
     // 15-second hard failsafe: force-hide overlay no matter what
-    setTimeout(() => { hideLoadingOverlay(); document.getElementById('boot-sequence').classList.add('hidden'); }, 15000);
+    if (bootFailsafeTimer) clearTimeout(bootFailsafeTimer);
+    bootFailsafeTimer = setTimeout(() => {
+        hideLoadingOverlay();
+        const bs = document.getElementById('boot-sequence');
+        if (bs) bs.classList.add('hidden');
+    }, 15000);
 });
 
 async function runBootSequence() {
@@ -26,6 +37,7 @@ async function runBootSequence() {
     const barEl = document.getElementById('boot-bar');
 
     for (let i = 0; i < lines.length; i++) {
+        if (!logEl || !barEl) break;
         const line = document.createElement('div');
         line.textContent = '> ' + lines[i];
         logEl.appendChild(line);
@@ -34,26 +46,84 @@ async function runBootSequence() {
     }
 
     await sleep(400);
-    document.getElementById('boot-sequence').classList.add('hidden');
+    const seq = document.getElementById('boot-sequence');
+    if (seq) seq.classList.add('hidden');
 
-    // Now run normal init
-    try { initTabs(); } catch (e) { console.error('initTabs:', e); }
-    try { updateClock(); setInterval(updateClock, 1000); } catch (e) { }
+    // Now run normal init safely
+    try { initTabs(); } catch (e) { }
+    try {
+        updateClock();
+        if (masterClockTimer) clearInterval(masterClockTimer);
+        masterClockTimer = setInterval(updateClock, 1000);
+    } catch (e) { }
     try { startCountdown(); } catch (e) { }
-    try { initMap(); } catch (e) { console.error('initMap:', e); }
-    try { initRadarChart(); } catch (e) { console.error('initRadarChart:', e); }
-    try { renderIW(); } catch (e) { console.error('renderIW:', e); }
-    try { renderACH(); } catch (e) { console.error('renderACH:', e); }
-    try { renderRedTeam(); } catch (e) { console.error('renderRedTeam:', e); }
-    try { renderNetAssessTable(); } catch (e) { console.error('renderNetAssess:', e); }
-    try { renderCone(); } catch (e) { console.error('renderCone:', e); }
-    try { renderSIGINT(); } catch (e) { console.error('renderSIGINT:', e); }
+    try { initMap(); } catch (e) { }
+    try { initRadarChart(); } catch (e) { }
+    try { computeIW(); renderIW(); } catch (e) { }
+    try { renderACH(); } catch (e) { }
+    try { renderRedTeam(); } catch (e) { }
+    try { renderNetAssessTable(); } catch (e) { }
+    try { renderCone(); } catch (e) { }
+    try { renderSIGINT(); } catch (e) { }
     try { renderPropaganda(); } catch (e) { }
     try { renderUnverified(); } catch (e) { }
-    try { renderChronology(); } catch (e) { console.error('renderChron:', e); }
+    try { renderChronology(); } catch (e) { }
+
+    // Live News Engine
+    if (liveNewsTimer) clearInterval(liveNewsTimer);
+    liveNewsTimer = setInterval(() => {
+        if (typeof VERIFIED_NEWS !== 'undefined' && Array.isArray(VERIFIED_NEWS)) {
+            VERIFIED_NEWS.forEach(n => { n.time++; });
+            renderNews();
+        }
+    }, 60000);
+
+    function startLiveNewsEngine() {
+        const hasVerified = typeof LIVE_NEWS_POOL !== 'undefined' && LIVE_NEWS_POOL.length > 0;
+        const hasPropaganda = typeof LIVE_PROPAGANDA_POOL !== 'undefined' && LIVE_PROPAGANDA_POOL.length > 0;
+        const hasUnverified = typeof LIVE_UNVERIFIED_POOL !== 'undefined' && LIVE_UNVERIFIED_POOL.length > 0;
+
+        if (hasVerified || hasPropaganda || hasUnverified) {
+            const delay = Math.floor(Math.random() * 10000) + 8000; // 8s-18s
+            if (newsInjectTimer) clearTimeout(newsInjectTimer);
+            newsInjectTimer = setTimeout(() => {
+                const pools = [];
+                // Weighting so verified is more common
+                if (hasVerified) pools.push({ pool: LIVE_NEWS_POOL, type: 'verified' }, { pool: LIVE_NEWS_POOL, type: 'verified' });
+                if (hasPropaganda) pools.push({ pool: LIVE_PROPAGANDA_POOL, type: 'propaganda' });
+                if (hasUnverified) pools.push({ pool: LIVE_UNVERIFIED_POOL, type: 'unverified' });
+
+                if (pools.length === 0) return;
+                const selected = pools[Math.floor(Math.random() * pools.length)];
+                if (!selected.pool || selected.pool.length === 0) return;
+
+                const nextItem = selected.pool.shift();
+
+                if (selected.type === 'verified' && typeof VERIFIED_NEWS !== 'undefined') {
+                    nextItem.time = 0;
+                    VERIFIED_NEWS.unshift(nextItem);
+                    renderNews();
+                    const c = document.getElementById('osint-feed');
+                    if (c && c.firstElementChild) c.firstElementChild.classList.add('flash-new');
+                } else if (selected.type === 'propaganda' && typeof PROPAGANDA_NEWS !== 'undefined') {
+                    PROPAGANDA_NEWS.unshift(nextItem);
+                    renderPropaganda();
+                    const c = document.getElementById('prop-feed');
+                    if (c && c.firstElementChild) c.firstElementChild.classList.add('flash-new');
+                } else if (selected.type === 'unverified' && typeof UNVERIFIED_NEWS !== 'undefined') {
+                    UNVERIFIED_NEWS.unshift(nextItem);
+                    renderUnverified();
+                    const c = document.getElementById('unverified-feed');
+                    if (c && c.firstElementChild) c.firstElementChild.classList.add('flash-new');
+                }
+
+                startLiveNewsEngine();
+            }, delay);
+        }
+    }
+    try { startLiveNewsEngine(); } catch (e) { }
 
     simulateRefresh(true).catch(e => {
-        console.error('simulateRefresh failed:', e);
         hideLoadingOverlay();
     });
 }
@@ -149,12 +219,46 @@ async function simulateRefresh(isInitial) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ===== PROBABILITY & THREAT =====
+function computeIW() {
+    if (typeof IW_INDICATORS === 'undefined' || !Array.isArray(IW_INDICATORS)) return;
+    IW_INDICATORS.forEach(i => {
+        if (typeof i.val !== 'number') return;
+
+        // Compute trend vs base
+        if (Math.abs(i.val - i.base) < (i.base * 0.05) || i.base === 0) i.trend = 'flat';
+        else i.trend = (i.val > i.base) ? 'up' : 'down';
+
+        // Compute status based on thresholds
+        if (i.inverse) {
+            i.status = (i.val <= i.triggerThresh) ? 'triggered' : (i.val <= i.watchThresh) ? 'watch' : 'clear';
+        } else {
+            i.status = (i.val >= i.triggerThresh) ? 'triggered' : (i.val >= i.watchThresh) ? 'watch' : 'clear';
+        }
+
+        // Formatting reading
+        i.reading = `${i.val % 1 !== 0 ? i.val.toFixed(1) : i.val} ${i.unit}`;
+    });
+}
+
 function applyProbabilityUpdate() {
+    // Add noise to IW values
+    if (typeof IW_INDICATORS !== 'undefined') {
+        IW_INDICATORS.forEach(i => {
+            if (typeof i.val === 'number' && typeof i.triggerThresh === 'number' && typeof i.base === 'number') {
+                const maxDelta = Math.abs(i.triggerThresh - i.base) * 0.3; // 30% volatility max
+                const shift = (Math.random() - 0.5) * maxDelta;
+                i.val = Math.max(0, i.val + shift); // ensure no negative
+            }
+        });
+    }
+    computeIW();
+
     const iwT = IW_INDICATORS.filter(i => i.status === 'triggered').length;
-    const mul = 1 + iwT * 0.02;
+    const mul = 1 + iwT * 0.02; // I&W multiplier
     scenarios = scenarios.map(s => {
         const diff = s.current - s.baseline, rev = -diff * 0.12, noise = (Math.random() - 0.4) * 6 * mul;
-        return { ...s, current: Math.min(98, Math.max(1, Math.round(s.current + rev + noise))) };
+        // Clamp explicitly to 0-100
+        return { ...s, current: Math.min(100, Math.max(0, Math.round(s.current + rev + noise))) };
     });
 }
 function computeConf(s) {
@@ -166,9 +270,22 @@ function computeConf(s) {
 }
 const CLBL = { high: 'HIGH ▲', med: 'MED ◆', low: 'LOW ▼', spec: 'SPEKULATIF' };
 function updateThreatLevel() {
-    const f = id => scenarios.find(s => s.id === id).current;
-    const sc = f('S4') * .3 + f('S5') * .25 + f('S7') * .25 + f('S8') * .2;
-    currentThreatLevel = sc >= 38 ? 4 : sc >= 30 ? 3 : sc >= 22 ? 2 : sc >= 14 ? 1 : 0;
+    if (!Array.isArray(scenarios)) return;
+    const f = id => {
+        const s = scenarios.find(sc => sc.id === id);
+        return s ? s.current : 0;
+    };
+
+    // Scale weighted average to approach 100 for proper boundary conditions
+    // Boundary conditions tested: 79 -> 80 = TINGGI -> KRITIS
+    const scoreSum = f('S4') * 0.30 + f('S5') * 0.25 + f('S7') * 0.25 + f('S8') * 0.20;
+    const iwT = IW_INDICATORS.filter(i => i.status === 'triggered').length;
+
+    // Formula verification: scale limits cleanly
+    const sc = Math.min(100, Math.round((scoreSum * 1.5) + (iwT * 2.5)));
+
+    // Boundary enforcement
+    currentThreatLevel = sc >= 80 ? 4 : sc >= 60 ? 3 : sc >= 40 ? 2 : sc >= 20 ? 1 : 0;
 }
 
 // ===== RENDER ALL =====
@@ -187,12 +304,29 @@ const TCFG = [
 ];
 const BCLS = ['active-low', 'active-med', 'active-wsp', 'active-hgh', 'active-crt'];
 function renderThreat() {
+    if (currentThreatLevel < 0 || currentThreatLevel >= TCFG.length) return;
     const c = TCFG[currentThreatLevel];
+    if (!c) return;
     const lbl = document.getElementById('threat-label');
-    lbl.textContent = c.label; lbl.style.color = c.color; lbl.style.textShadow = `0 0 20px ${c.glow},0 0 40px ${c.glow}66`;
-    document.getElementById('threat-sub').textContent = c.sub;
-    for (let i = 0; i < 5; i++) { const b = document.getElementById(`tb${i}`); b.className = 'tbar'; if (i < c.bCount) b.classList.add(BCLS[i]); }
-    document.querySelectorAll('.tid').forEach((el, i) => el.style.opacity = i === currentThreatLevel ? '1' : '0.35');
+    if (lbl) {
+        lbl.textContent = c.label;
+        lbl.style.color = c.color;
+        lbl.style.textShadow = `0 0 20px ${c.glow},0 0 40px ${c.glow}66`;
+    }
+    const sub = document.getElementById('threat-sub');
+    if (sub) sub.textContent = c.sub;
+
+    for (let i = 0; i < 5; i++) {
+        const b = document.getElementById(`tb${i}`);
+        if (b) {
+            b.className = 'tbar';
+            if (i < c.bCount) b.classList.add(BCLS[i]);
+        }
+    }
+    const tids = document.querySelectorAll('.tid');
+    if (tids) {
+        tids.forEach((el, i) => { if (el) el.style.opacity = i === currentThreatLevel ? '1' : '0.35'; });
+    }
 }
 
 // ===== SCENARIOS =====
@@ -209,7 +343,7 @@ function renderScenarios() {
         const tags = s.tags.map(t => `<span class="tag ${t === 'de-eskalasi' ? 'deeskalasi' : t}">${t.toUpperCase()}</span>`).join('');
         el.insertAdjacentHTML('beforeend', `<div class="scenario-item">
       <div class="scenario-header">
-        <div class="scenario-name">${s.name}</div>
+        <div class="scenario-name">${esc(s.name)}</div>
         <div class="scenario-prob" style="color:${pc}">${s.current}%</div>
         <div class="scenario-delta ${dc}">${ds}</div>
       </div>
@@ -218,19 +352,31 @@ function renderScenarios() {
         <div class="bar-current ${s.barClass}" style="width:${s.current}%"></div>
       </div>
       <div class="scenario-footer">${tags}<span class="conf-badge ${conf}">${CLBL[conf]}</span></div>
-      ${s.challenge ? `<button class="btn-challenge" onclick="toggleChallenge('${s.id}')">⚡ CHALLENGE THIS ANALYSIS <span style="float:right;font-size:8px;opacity:0.5">(DEVIL'S ADVOCATE)</span></button><div class="challenge-box" id="cb-${s.id}"><div class="cb-label">ACH HIGHLIGHT <span>(AI Red Team)</span></div>${s.challenge}</div>` : ''}
+      ${s.challenge ? `<button class="btn-challenge" onclick="toggleChallenge('${s.id}')">⚡ CHALLENGE THIS ANALYSIS <span style="float:right;font-size:8px;opacity:0.5">(DEVIL'S ADVOCATE)</span></button><div class="challenge-box" id="cb-${s.id}"><div class="cb-label">ACH HIGHLIGHT <span>(AI Red Team)</span></div>${esc(s.challenge)}</div>` : ''}
     </div>`);
     });
 }
 
 // ===== DELTA =====
 function renderDeltaTracker() {
+    const el = document.getElementById('delta-list');
+    if (!el || !Array.isArray(scenarios)) return;
     const top = scenarios.map(s => ({ ...s, delta: s.current - s.baseline, abs: Math.abs(s.current - s.baseline) })).filter(s => s.abs > 0).sort((a, b) => b.abs - a.abs).slice(0, 6);
-    document.getElementById('delta-list').innerHTML = top.length ? top.map(s => `<div class="delta-item">
+    el.innerHTML = top.length ? top.map(s => `<div class="delta-item">
     <span class="delta-arrow ${s.delta > 0 ? 'up' : 'down'}">${s.delta > 0 ? '▲' : '▼'}</span>
-    <span class="delta-label">${s.name}</span>
+    <span class="delta-label">${esc(s.name)}</span>
     <span class="delta-value ${s.delta > 0 ? 'pos' : 'neg'}">${s.delta > 0 ? '+' + s.delta : s.delta}%</span>
   </div>`).join('') : '<div style="color:var(--text-dim);font-size:11px;padding:6px 0">Tidak ada perubahan dari baseline.</div>';
+}
+
+// ===== SECURITY & ESCAPING =====
+function esc(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>"'`=\/]/g, function (s) {
+        return {
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;', '`': '&#x60;', '=': '&#x3D;'
+        }[s];
+    });
 }
 
 // ===== NEWS =====
@@ -246,36 +392,48 @@ function toggleUnverified() {
     document.getElementById('uv-toggle-btn').textContent = uvVisible ? 'SEMBUNYIKAN' : 'TAMPILKAN';
 }
 function renderNews() {
-    const shuffled = [...VERIFIED_NEWS].sort(() => Math.random() - .5);
-    const filtered = activeFeedFilter === 'all' ? shuffled : shuffled.filter(n => n.impact === activeFeedFilter);
-    document.getElementById('feed-count').textContent = filtered.length;
-    document.getElementById('osint-feed').innerHTML = filtered.map(n => `<div class="news-item ${n.impact}">
+    if (typeof VERIFIED_NEWS === 'undefined' || !Array.isArray(VERIFIED_NEWS)) return;
+    const sorted = [...VERIFIED_NEWS].sort((a, b) => a.time - b.time);
+    const filtered = activeFeedFilter === 'all' ? sorted : sorted.filter(n => n.impact === activeFeedFilter);
+    const cb = document.getElementById('feed-count'); if (cb) cb.textContent = filtered.length;
+
+    const elFeed = document.getElementById('osint-feed');
+    if (!elFeed) return;
+    const now = new Date();
+    document.getElementById('osint-feed').innerHTML = filtered.map(n => {
+        const itemTime = new Date(now.getTime() - n.time * 60000 + now.getTimezoneOffset() * 60000 + 7 * 3600000);
+        const p = num => String(num).padStart(2, '0');
+        const ts = `${p(itemTime.getHours())}:${p(itemTime.getMinutes())}`;
+        const targetLink = n.link || 'https://x.com/DeItaone';
+
+        return `<a href="${esc(targetLink)}" target="_blank" rel="noopener noreferrer" class="news-item ${n.impact}">
     <div class="news-header">
+      <span class="news-time-badge">${ts} WIB</span>
       <span class="news-impact ${n.impact}">${n.impact === 'eskalasi' ? 'ESKALASI' : n.impact === 'deeskalasi' ? 'DE-ESKALASI' : 'NETRAL'}</span>
       <span class="intel-badge ${n.intel}">${n.intel}</span>
       <span class="credibility-score ${n.cred >= 8 ? 'high' : n.cred >= 6 ? 'med' : 'low'}">CRED:${n.cred}/10</span>
-      <span class="news-time">${n.time}mnt</span>
-      <span class="news-source">${n.source}</span>
+      <span class="news-source">${esc(n.source)}</span>
     </div>
-    <div class="news-headline">${n.headline}</div>
-    <div class="news-analysis">${n.analysis}</div>
-  </div>`).join('');
+    <div class="news-headline">${esc(n.headline)}</div>
+    <div class="news-analysis">${esc(n.analysis)}</div>
+  </a>`;
+    }).join('');
 }
 function renderPropaganda() {
     const list = credFilterOn ? PROPAGANDA_NEWS.filter(n => n.cred >= 7) : PROPAGANDA_NEWS;
     document.getElementById('prop-count').textContent = `${PROPAGANDA_NEWS.filter(n => n.cred < 5).length} FLAGS`;
     document.getElementById('prop-feed').innerHTML = list.map(n => `<div class="prop-item">
     <div class="prop-item-header"><span class="prop-flag">${n.flag}</span><span class="credibility-score ${n.cred >= 8 ? 'high' : n.cred >= 6 ? 'med' : 'low'}">CRED:${n.cred}/10</span></div>
-    <div class="prop-headline">"${n.headline}" — ${n.source}</div>
-    <div class="prop-analysis">${n.analysis}</div>
+    <div class="prop-headline">"${esc(n.headline)}" — ${esc(n.source)}</div>
+    <div class="prop-analysis">${esc(n.analysis)}</div>
   </div>`).join('');
 }
 function renderUnverified() {
     document.getElementById('unverified-feed').innerHTML = UNVERIFIED_NEWS.map(n => `<div class="uv-item">
     <div class="uv-watermark">UNVERIFIED</div>
-    <div><span class="uv-label">${n.label}</span></div>
-    <div class="uv-headline">${n.headline}</div>
-    <div class="uv-impact">Potensi Dampak (IF valid): <strong>${n.impact}</strong></div>
+    <div><span class="uv-label">${esc(n.label)}</span></div>
+    <div class="uv-headline">${esc(n.headline)}</div>
+    <div class="uv-impact">Potensi Dampak (IF valid): <strong>${esc(n.impact)}</strong></div>
   </div>`).join('');
 }
 function renderAnalystSummary() {
@@ -299,9 +457,9 @@ function renderIW() {
       ${rows.map(r => `<div class="iw-row">
         <div><div class="iw-dot ${r.status}"></div></div>
         <div class="iw-cr">${r.cr}</div>
-        <div class="iw-name">${r.name}</div>
-        <div class="iw-threshold">${r.threshold}</div>
-        <div class="iw-reading ${r.status}">${r.reading}</div>
+        <div class="iw-name">${esc(r.name)}</div>
+        <div class="iw-threshold">${esc(r.threshold)}</div>
+        <div class="iw-reading ${r.status}">${esc(r.reading)}</div>
         <div class="iw-trend ${r.trend === 'up' ? 'up' : r.trend === 'down' ? 'down' : 'flat'}">${r.trend === 'up' ? '↑' : r.trend === 'down' ? '↓' : '→'}</div>
       </div>`).join('')}
     </div>`;
@@ -309,28 +467,55 @@ function renderIW() {
     renderIWCounts();
 }
 function renderIWCounts() {
+    if (typeof IW_INDICATORS === 'undefined' || !Array.isArray(IW_INDICATORS)) return;
+    const tot = IW_INDICATORS.length;
+    if (tot === 0) return; // Prevent Divide by Zero
+
     const t = IW_INDICATORS.filter(i => i.status === 'triggered').length;
     const w = IW_INDICATORS.filter(i => i.status === 'watch').length;
     const cl = IW_INDICATORS.filter(i => i.status === 'clear').length;
-    const tot = IW_INDICATORS.length;
-    document.getElementById('iw-triggered').textContent = t;
-    document.getElementById('iw-watch').textContent = w;
-    document.getElementById('iw-clear').textContent = cl;
-    document.getElementById('iw-bar-t').style.width = `${t / tot * 100}%`;
-    document.getElementById('iw-bar-w').style.width = `${w / tot * 100}%`;
-    document.getElementById('iw-bar-c').style.width = `${cl / tot * 100}%`;
+
+    const setT = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+    const setW = (id, pct) => { const e = document.getElementById(id); if (e) e.style.width = pct + '%'; };
+
+    setT('iw-triggered', t); setT('iw-watch', w); setT('iw-clear', cl);
+    setW('iw-bar-t', (t / tot) * 100);
+    setW('iw-bar-w', (w / tot) * 100);
+    setW('iw-bar-c', (cl / tot) * 100);
 }
 
 // ===== ACH =====
 const CCLS = { C: 'ac', I: 'ai', N: 'an', D: 'ad' };
 function renderACH() {
-    const scores = ACH_HYPOTHESES.map((_, hi) => ({ hi, incons: ACH_EVIDENCE.filter(e => e.cells[hi] === 'I').length, diag: ACH_EVIDENCE.filter(e => e.cells[hi] === 'D').length }));
-    const best = scores.reduce((a, b) => a.incons < b.incons ? a : b).hi;
-    const hdrs = ACH_HYPOTHESES.map((h, i) => `<th class="hyp${i === best ? ' winner' : ''}">${h.short}<br><small style="font-size:8px;opacity:.6">${h.id}</small></th>`).join('');
-    const rows = ACH_EVIDENCE.map(ev => `<tr><td class="ev-label">${ev.ev}</td>${ev.cells.map(c => `<td class="${CCLS[c]}">${c}</td>`).join('')}</tr>`).join('');
+    if (typeof ACH_HYPOTHESES === 'undefined' || typeof ACH_EVIDENCE === 'undefined') return;
+
+    const scores = ACH_HYPOTHESES.map((_, hi) => {
+        let incons = 0, diag = 0;
+        ACH_EVIDENCE.forEach(e => {
+            const w = e.weight || 1;
+            if (e.cells[hi] === 'I') incons += w;
+            if (e.cells[hi] === 'D') diag += w;
+        });
+        return { hi, incons, diag };
+    });
+
+    const minIncons = Math.min(...scores.map(s => s.incons));
+    const bestCandidates = scores.filter(s => s.incons === minIncons);
+    const maxDiag = Math.max(...bestCandidates.map(s => s.diag));
+
+    // Tie scenarios handling: pick all candidates with minIncons and maxDiag
+    const winners = bestCandidates.filter(s => s.diag === maxDiag).map(s => s.hi);
+    const best = winners[0]; // Primary winner for simple highlight
+
+    const hdrs = ACH_HYPOTHESES.map((h, i) => `<th class="hyp${winners.includes(i) ? ' winner' : ''}">${esc(h.short)}<br><small style="font-size:8px;opacity:.6">${h.id}</small></th>`).join('');
+    // Ensure styles to highlight winner columns subtly
+    const rows = ACH_EVIDENCE.map(ev => `<tr><td class="ev-label">${esc(ev.ev)}</td>${ev.cells.map((c, i) => `<td class="${CCLS[c]}">${c}</td>`).join('')}</tr>`).join('');
+
     document.getElementById('ach-matrix').innerHTML = `<table class="ach-table"><thead><tr><th>BUKTI / HIPOTESIS</th>${hdrs}</tr></thead><tbody>${rows}</tbody></table>`;
-    document.getElementById('ach-scores').innerHTML = scores.map((sc, i) => `<div class="ach-score-item"><div class="ach-score-val${i === best ? ' best' : ''}">${sc.incons}I / ${sc.diag}D</div><div class="ach-score-name">${ACH_HYPOTHESES[i].short}</div></div>`).join('');
-    document.getElementById('ach-conclusion').innerHTML = `<strong>KESIMPULAN ACH:</strong> Hipotesis paling konsisten dengan bukti: <strong>${ACH_HYPOTHESES[best].name}</strong> (${ACH_HYPOTHESES[best].id}) — hanya ${scores[best].incons} inkonsistensi dari ${ACH_EVIDENCE.length} bukti. Lakukan collection requirement pada indikator diagnostik untuk konfirmasi.`;
+    document.getElementById('ach-scores').innerHTML = scores.map((sc, i) => `<div class="ach-score-item"><div class="ach-score-val${winners.includes(i) ? ' best' : ''}">${sc.incons}I / ${sc.diag}D</div><div class="ach-score-name">${esc(ACH_HYPOTHESES[i].short)}</div></div>`).join('');
+
+    const winnerNames = winners.map(i => `<strong>${esc(ACH_HYPOTHESES[i].name)}</strong>`).join(' & ');
+    document.getElementById('ach-conclusion').innerHTML = `<strong>KESIMPULAN ACH:</strong> Hipotesis paling konsisten dengan bukti: ${winnerNames} — hanya ${minIncons} inkonsistensi berbobot (Weighted Inconsistency) dari ${ACH_EVIDENCE.length} bukti. Lakukan collection requirement pada indikator diagnostik untuk konfirmasi.`;
 }
 
 // ===== RED TEAM =====
