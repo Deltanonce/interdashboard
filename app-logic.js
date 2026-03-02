@@ -8,7 +8,35 @@ let activeFeedFilter = 'all', credFilterOn = false, uvVisible = false;
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
-    // Run each module init independently so one failure can't block the rest
+    runBootSequence();
+    // 15-second hard failsafe: force-hide overlay no matter what
+    setTimeout(() => { hideLoadingOverlay(); document.getElementById('boot-sequence').classList.add('hidden'); }, 15000);
+});
+
+async function runBootSequence() {
+    const lines = [
+        'INITIALIZING STRATEGIC COMMAND NETWORK...',
+        'ESTABLISHING SECURE HANDSHAKE [RSA-4096]...',
+        'BYPASSING PROXY FIREWALLS...',
+        'CONNECTING TO SATELLITE FEED (VANDENBERG AFB)...',
+        'LINK SUCCESSFUL.',
+        'LOADING INTEL DASHBOARD v3.0...'
+    ];
+    const logEl = document.getElementById('boot-log');
+    const barEl = document.getElementById('boot-bar');
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = document.createElement('div');
+        line.textContent = '> ' + lines[i];
+        logEl.appendChild(line);
+        barEl.style.width = ((i + 1) / lines.length * 100) + '%';
+        await sleep(300 + Math.random() * 400); // Random delay 0.3s - 0.7s per line
+    }
+
+    await sleep(400);
+    document.getElementById('boot-sequence').classList.add('hidden');
+
+    // Now run normal init
     try { initTabs(); } catch (e) { console.error('initTabs:', e); }
     try { updateClock(); setInterval(updateClock, 1000); } catch (e) { }
     try { startCountdown(); } catch (e) { }
@@ -23,18 +51,11 @@ document.addEventListener('DOMContentLoaded', () => {
     try { renderPropaganda(); } catch (e) { }
     try { renderUnverified(); } catch (e) { }
     try { renderChronology(); } catch (e) { console.error('renderChron:', e); }
-    // Always start the refresh cycle regardless of errors above
-    // Use .catch() not try/catch because simulateRefresh is async
+
     simulateRefresh(true).catch(e => {
         console.error('simulateRefresh failed:', e);
         hideLoadingOverlay();
     });
-    // 12-second hard failsafe: force-hide overlay no matter what
-    setTimeout(hideLoadingOverlay, 12000);
-});
-
-function hideLoadingOverlay() {
-    try { document.getElementById('loading-overlay').classList.add('hidden'); } catch (e) { }
 }
 
 function hideLoadingOverlay() {
@@ -522,7 +543,8 @@ function initMap() {
             radius: loc.r + 8,
             fillColor: loc.color,
             color: 'transparent',
-            fillOpacity: 0.2
+            fillOpacity: 0.2,
+            className: 'pulse-marker-svg'
         });
 
         const tooltipContent = `<div style="font-family:'Share Tech Mono';text-align:center;">
@@ -569,6 +591,14 @@ function initMap() {
                 text-shadow: 0 0 4px #000 !important;
             }
             .leaflet-tooltip.route-label::before { display: none; }
+            .pulse-marker-svg {
+                transform-origin: center;
+                animation: svgPulse 2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+            }
+            @keyframes svgPulse {
+                0% { opacity: 0.8; stroke-width: 10px; stroke: currentColor; }
+                100% { opacity: 0; stroke-width: 40px; stroke: currentColor; }
+            }
         `;
         document.head.appendChild(style);
     }
