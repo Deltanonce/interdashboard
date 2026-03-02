@@ -1,0 +1,426 @@
+﻿<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>INTEL DASHBOARD v3.0 — Proyeksi Konflik Timur Tengah</title>
+  <meta name="description"
+    content="Sistem analitik intelijen real-time: I&W Matrix, ACH, Red Teaming, Net Assessment, Cone of Plausibility, SIGINT Fusion — Konflik Iran-Israel-AS" />
+
+  <!-- Fonts: non-blocking load -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@400;600;800&display=swap"
+    rel="stylesheet" media="print" onload="this.media='all'" />
+  <noscript>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@600&display=swap"
+      rel="stylesheet">
+  </noscript>
+
+  <!-- Leaflet for real satellite map -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+
+  <!-- Chart.js removed — replaced by offline SVG radar chart -->
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <div class="scanlines"></div>
+
+  <!-- ===== TOP BANNER ===== -->
+  <header class="top-banner">
+    <div class="banner-left">
+      <span class="banner-icon">⬡</span>
+      <span class="banner-label classified-tag">CLASSIFIED</span>
+      <span class="banner-sep">|</span>
+      <span class="banner-label">INTEL DASHBOARD v3.0</span>
+      <span class="banner-sep">|</span>
+      <span class="version-badge">7 METODE ANALISIS AKTIF</span>
+    </div>
+
+    <div class="banner-center">
+      <div class="signal-noise-gauge">
+        <span class="sn-label">SIGNAL</span>
+        <div class="sn-bar-wrap">
+          <div class="sn-bar-fill" id="sn-bar"></div>
+          <div class="sn-bar-noise" id="sn-noise"></div>
+        </div>
+        <span class="sn-label">NOISE</span>
+        <span class="sn-ratio" id="sn-ratio">72:28</span>
+      </div>
+      <span class="banner-divider"></span>
+      <span class="blink-dot"></span>
+      <span id="live-label">LIVE — TIMUR TENGAH</span>
+    </div>
+
+    <div class="banner-right">
+      <span id="clock-display">--:--:-- WIB</span>
+      <span class="banner-sep">|</span>
+      <span id="date-display">-- Mar 2026</span>
+    </div>
+  </header>
+
+  <!-- ===== TAB NAVIGATION ===== -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="tab-map">🗺️ PETA SATELIT</button>
+    <button class="tab-btn" data-tab="tab-scenarios">📊 SKENARIO</button>
+    <button class="tab-btn" data-tab="tab-iw">⚠️ I&amp;W MATRIX</button>
+    <button class="tab-btn" data-tab="tab-ach">🧩 ACH</button>
+    <button class="tab-btn" data-tab="tab-redteam">♟️ RED TEAM</button>
+    <button class="tab-btn" data-tab="tab-netassess">⚖️ NET ASSESSMENT</button>
+    <button class="tab-btn" data-tab="tab-cone">📐 CONE</button>
+    <button class="tab-btn" data-tab="tab-sigint">📡 SIGINT FUSION</button>
+    <button class="tab-btn" data-tab="tab-chronology">⏳ KRONOLOGI</button>
+  </nav>
+
+  <!-- ===== MAIN LAYOUT ===== -->
+  <main class="dashboard-grid">
+
+    <!-- ========== LEFT PANEL (PERSISTENT) ========== -->
+    <aside class="panel panel-left">
+
+      <!-- Threat Level -->
+      <section class="card threat-card" id="threat-card">
+        <div class="card-title"><span class="icon-hex">◈</span> LEVEL ANCAMAN</div>
+        <div class="threat-ring">
+          <div class="threat-level-label" id="threat-label">KRITIS</div>
+          <div class="threat-sublabel" id="threat-sub">RISIKO ESKALASI AKTIF</div>
+        </div>
+        <div class="threat-bars">
+          <div class="tbar" id="tb0"></div>
+          <div class="tbar" id="tb1"></div>
+          <div class="tbar" id="tb2"></div>
+          <div class="tbar" id="tb3"></div>
+          <div class="tbar" id="tb4"></div>
+        </div>
+        <div class="threat-index-row">
+          <span class="tid low">RENDAH</span>
+          <span class="tid med">SEDANG</span>
+          <span class="tid wsp">WASPADA</span>
+          <span class="tid hgh">TINGGI</span>
+          <span class="tid crt">KRITIS</span>
+        </div>
+      </section>
+
+      <!-- Refresh Control -->
+      <section class="card refresh-card">
+        <div class="card-title"><span class="icon-hex">◈</span> PEMANTAUAN OTOMATIS</div>
+        <div class="auto-refresh-row">
+          <div class="ar-item">
+            <div class="ar-label">BERIKUTNYA</div>
+            <div class="ar-value" id="countdown-display">05:00</div>
+          </div>
+          <div class="ar-item">
+            <div class="ar-label">REFRESH</div>
+            <div class="ar-value" id="refresh-count">0</div>
+          </div>
+          <div class="ar-item">
+            <div class="ar-label">DIPERBARUI</div>
+            <div class="ar-value small" id="last-update">--:--</div>
+          </div>
+        </div>
+        <button class="btn-refresh" id="refresh-btn" onclick="triggerRefresh()">
+          <span class="btn-icon">↻</span> REFRESH SEKARANG
+        </button>
+      </section>
+
+      <!-- I&W Warning Count -->
+      <section class="card iw-summary-card">
+        <div class="card-title"><span class="icon-hex">◈</span> I&amp;W STATUS</div>
+        <div class="iw-summary-row">
+          <div class="iw-stat triggered">
+            <div class="iw-num" id="iw-triggered">0</div>
+            <div class="iw-lbl">TRIGGERED</div>
+          </div>
+          <div class="iw-stat watch">
+            <div class="iw-num" id="iw-watch">0</div>
+            <div class="iw-lbl">WATCH</div>
+          </div>
+          <div class="iw-stat clear">
+            <div class="iw-num" id="iw-clear">0</div>
+            <div class="iw-lbl">CLEAR</div>
+          </div>
+        </div>
+        <div class="iw-bar-container">
+          <div class="iw-bar-seg triggered" id="iw-bar-t"></div>
+          <div class="iw-bar-seg watch" id="iw-bar-w"></div>
+          <div class="iw-bar-seg clear" id="iw-bar-c"></div>
+        </div>
+      </section>
+
+      <!-- Delta Tracker -->
+      <section class="card delta-card">
+        <div class="card-title"><span class="icon-hex">◈</span> DELTA TRACKER <span class="baseline-tag">vs 2 Mar
+            2026</span></div>
+        <div id="delta-list"></div>
+      </section>
+
+      <!-- Analyst Summary -->
+      <section class="card analyst-card">
+        <div class="card-title"><span class="icon-hex">◈</span> RINGKASAN ANALIS</div>
+        <div class="analyst-body" id="analyst-summary">Memuat analisis...</div>
+        <div class="analyst-footer">
+          <span class="ai-badge">⚡ Multi-Method AI Analysis</span>
+          <span id="analysis-time">--:--</span>
+        </div>
+      </section>
+
+    </aside>
+
+    <!-- ========== CENTER PANEL (TABS) ========== -->
+    <section class="panel panel-center">
+
+      <!-- TAB: MAP -->
+      <div class="tab-panel active" id="tab-map">
+        <div class="tab-header">
+          <h2 class="tab-title">🗺️ PETA SITUASI SATELIT</h2>
+          <div class="map-legend">
+            <span class="ml-item"><span class="ml-dot red"></span> Militer Aktif</span>
+            <span class="ml-item"><span class="ml-dot yellow"></span> Waspada</span>
+            <span class="ml-item"><span class="ml-dot blue"></span> Naval Force</span>
+            <span class="ml-item"><span class="ml-dot green"></span> Diplomatik</span>
+          </div>
+        </div>
+        <div id="satellite-map"></div>
+        <div class="map-layer-controls">
+          <button class="layer-btn active" onclick="toggleLayer('naval')">⚓ Naval Forces</button>
+          <button class="layer-btn active" onclick="toggleLayer('airbase')">✈️ Air Bases</button>
+          <button class="layer-btn active" onclick="toggleLayer('missile')">🚀 Missile Sites</button>
+          <button class="layer-btn active" onclick="toggleLayer('proxy')">⬡ Proxy Forces</button>
+          <button class="layer-btn active" onclick="toggleLayer('nuclear')">☢️ Nuclear Sites</button>
+        </div>
+      </div>
+
+      <!-- TAB: SCENARIOS -->
+      <div class="tab-panel" id="tab-scenarios">
+        <div class="tab-header">
+          <h2 class="tab-title">📊 PROBABILITAS SKENARIO</h2>
+          <div class="conf-legend">
+            <span class="cl-badge high">HIGH</span>
+            <span class="cl-badge med">MED</span>
+            <span class="cl-badge low">LOW</span>
+            <span class="cl-badge spec">SPEKULATIF</span>
+            <span style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);">= CONFIDENCE LEVEL</span>
+          </div>
+        </div>
+        <div class="scenario-group">
+          <div class="group-label diplomatik">⬡ KELOMPOK DIPLOMASI</div>
+          <div class="scenario-list" id="group-diplomasi"></div>
+        </div>
+        <div class="scenario-group">
+          <div class="group-label militer">⬡ KELOMPOK MILITER</div>
+          <div class="scenario-list" id="group-militer"></div>
+        </div>
+        <div class="scenario-group">
+          <div class="group-label ekonomi">⬡ KELOMPOK EKONOMI</div>
+          <div class="scenario-list" id="group-ekonomi"></div>
+        </div>
+        <div class="scenario-group">
+          <div class="group-label ekstrem">⬡ RISIKO EKSTREM</div>
+          <div class="scenario-list" id="group-ekstrem"></div>
+        </div>
+      </div>
+
+      <!-- TAB: I&W MATRIX -->
+      <div class="tab-panel" id="tab-iw">
+        <div class="tab-header">
+          <h2 class="tab-title">⚠️ INDICATORS &amp; WARNINGS MATRIX</h2>
+          <div class="iw-legend">
+            <span class="iw-badge triggered">● TRIGGERED</span>
+            <span class="iw-badge watch">● WATCH</span>
+            <span class="iw-badge clear">● CLEAR</span>
+            <span class="iw-badge unknown">● UNKNOWN</span>
+          </div>
+        </div>
+        <div class="iw-categories" id="iw-table"></div>
+      </div>
+
+      <!-- TAB: ACH -->
+      <div class="tab-panel" id="tab-ach">
+        <div class="tab-header">
+          <h2 class="tab-title">🧩 ANALYSIS OF COMPETING HYPOTHESES</h2>
+          <div class="ach-legend">
+            <span class="ach-cell-label c">C = Konsisten</span>
+            <span class="ach-cell-label i">I = Inkonsisten</span>
+            <span class="ach-cell-label n">N = N/A</span>
+            <span class="ach-cell-label d">D = Diagnostik</span>
+          </div>
+        </div>
+        <div class="ach-wrapper">
+          <div class="ach-scroll" id="ach-matrix"></div>
+          <div class="ach-scores" id="ach-scores"></div>
+        </div>
+        <div class="ach-conclusion" id="ach-conclusion"></div>
+      </div>
+
+      <!-- TAB: RED TEAM -->
+      <div class="tab-panel" id="tab-redteam">
+        <div class="tab-header">
+          <h2 class="tab-title">♟️ RED TEAM &amp; WARGAMING — GAME THEORY</h2>
+          <div class="rt-perspective-nav">
+            <span class="rt-label">PERSPEKTIF:</span>
+            <button class="pv-btn active" onclick="setPerspective('iran')">🇮🇷 IRAN</button>
+            <button class="pv-btn" onclick="setPerspective('israel')">🇮🇱 ISRAEL</button>
+            <button class="pv-btn" onclick="setPerspective('us')">🇺🇸 AS</button>
+            <button class="pv-btn" onclick="setPerspective('china')">🇨🇳 CHINA</button>
+          </div>
+        </div>
+        <div class="redteam-layout">
+          <div class="payoff-section">
+            <div class="payoff-title">PAYOFF MATRIX — <span id="pv-label">IRAN vs ISRAEL</span></div>
+            <div id="payoff-matrix"></div>
+            <div class="nash-info" id="nash-info"></div>
+          </div>
+          <div class="wargame-scenarios">
+            <div class="wg-title">SKENARIO WARGAME</div>
+            <div id="wargame-list"></div>
+          </div>
+        </div>
+        <div class="dominant-strategy" id="dominant-strategy"></div>
+      </div>
+
+      <!-- TAB: NET ASSESSMENT -->
+      <div class="tab-panel" id="tab-netassess">
+        <div class="tab-header">
+          <h2 class="tab-title">⚖️ NET ASSESSMENT — PERBANDINGAN KAPABILITAS</h2>
+        </div>
+        <div class="netassess-layout">
+          <div class="radar-container">
+            <canvas id="radar-chart"></canvas>
+          </div>
+          <div class="netassess-table" id="netassess-table"></div>
+        </div>
+        <div class="netassess-summary" id="netassess-summary"></div>
+      </div>
+
+      <!-- TAB: CONE OF PLAUSIBILITY -->
+      <div class="tab-panel" id="tab-cone">
+        <div class="tab-header">
+          <h2 class="tab-title">📐 CONE OF PLAUSIBILITY — TIMELINE SKENARIO</h2>
+          <div class="cone-legend">
+            <span class="cone-lbl worst">WORST CASE</span>
+            <span class="cone-lbl likely">MOST LIKELY</span>
+            <span class="cone-lbl best">BEST CASE</span>
+          </div>
+        </div>
+        <div id="cone-container"></div>
+      </div>
+
+      <!-- TAB: SIGINT FUSION -->
+      <div class="tab-panel" id="tab-sigint">
+        <div class="tab-header">
+          <h2 class="tab-title">📡 OSINT/SIGINT DATA FUSION</h2>
+          <div class="fusion-score-wrap">
+            <span class="fs-label">FUSION SCORE</span>
+            <span class="fs-value" id="fusion-score-val">--</span>
+            <span class="fs-label">/100</span>
+          </div>
+        </div>
+        <div class="sigint-layout">
+          <div class="source-grid" id="source-grid"></div>
+          <div class="sigint-sidebar">
+            <div class="anomaly-panel">
+              <div class="ap-title">📡 ANOMALY DETECTOR</div>
+              <div id="anomaly-list"></div>
+            </div>
+            <div class="predictive-panel">
+              <div class="ap-title">🔮 PREDICTIVE ANALYTICS</div>
+              <div id="predictive-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: CHRONOLOGY OF ESCALATION -->
+      <div class="tab-panel" id="tab-chronology">
+        <div class="tab-header">
+          <h2 class="tab-title">⏳ KRONOLOGI ESKALASI — TIMELINE KAUSALITAS</h2>
+        </div>
+        <div class="chronology-container" id="chronology-container"></div>
+      </div>
+
+    </section>
+
+    <!-- ========== RIGHT PANEL (PERSISTENT, SPLIT) ========== -->
+    <aside class="panel panel-right">
+
+      <!-- Verified OSINT Feed -->
+      <section class="card osint-card">
+        <div class="card-title">
+          <span class="icon-hex">◈</span> OSINT FEED — VERIFIED
+          <span class="feed-badge" id="feed-count">8</span>
+        </div>
+        <div class="feed-filter-row">
+          <button class="ff-btn active" onclick="filterFeed('all')">SEMUA</button>
+          <button class="ff-btn" onclick="filterFeed('eskalasi')">ESKALASI</button>
+          <button class="ff-btn" onclick="filterFeed('deeskalasi')">DE-ESK</button>
+        </div>
+        <div id="osint-feed"></div>
+      </section>
+
+      <!-- Propaganda Filter -->
+      <section class="card prop-card">
+        <div class="card-title">
+          <span class="icon-hex">◈</span> PROPAGANDA &amp; INFLUENCE FILTER
+          <span class="prop-badge" id="prop-count">0 FLAGS</span>
+        </div>
+        <div class="prop-filter-row">
+          <label class="prop-toggle">
+            <input type="checkbox" id="high-cred-filter" onchange="toggleCredFilter()" />
+            <span>Hanya ≥7 Kredibilitas</span>
+          </label>
+        </div>
+        <div id="prop-feed"></div>
+      </section>
+
+      <!-- Unverified / Bocoran — QUARANTINE -->
+      <section class="card unverified-card">
+        <div class="card-title unverified-title">
+          <span>⚠️</span> UNVERIFIED / BOCORAN
+          <button class="uv-toggle" id="uv-toggle-btn" onclick="toggleUnverified()">TAMPILKAN</button>
+        </div>
+        <div class="unverified-disclaimer">
+          Data berikut TIDAK mempengaruhi probabilitas utama. Gunakan sebagai referensi dengan kehati-hatian tinggi.
+        </div>
+        <div id="unverified-feed" class="uv-hidden"></div>
+      </section>
+
+    </aside>
+
+  </main>
+
+  <!-- LOADING OVERLAY (starts hidden; simulateRefresh shows then hides it) -->
+  <div class="loading-overlay hidden" id="loading-overlay">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text" id="loading-text">MENGINISIALISASI SISTEM...</div>
+      <div class="loading-steps" id="loading-steps"></div>
+    </div>
+  </div>
+
+  <!-- THE RED PHONE MODAL (Alert System) -->
+  <div class="red-phone-modal hidden" id="red-phone-modal">
+    <div class="rp-box">
+      <div class="rp-header">
+        <span class="rp-icon">☎️</span> THE RED PHONE
+      </div>
+      <div class="rp-content">
+        <div class="rp-flash">CRITICAL ESCALATION DETECTED</div>
+        <div class="rp-message" id="rp-message">Peringatan: Terjadi lonjakan probabilitas >15% pada skenario berisiko
+          tinggi.</div>
+        <button class="rp-ack-btn" onclick="acknowledgeRedPhone()">ACKNOWLEDGE (DISMISS)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet for real satellite map -->
+  <script src="app.js?v=19"></script>
+  <script src="app-logic.js?v=19"></script>
+</body>
+
+</html>
