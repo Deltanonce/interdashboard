@@ -1,18 +1,18 @@
 ﻿// ===== INTEL DASHBOARD v3.0 — DATA =====
 
 const SCENARIOS = [
-    { id: 'S1', group: 'diplomasi', barClass: 'bar-diplomatik', name: 'Gencatan Senjata Taktis Hizbullah-Israel (Blue Line)', baseline: 38, current: 38, tags: ['de-eskalasi', 'netral'], confBase: 'med', challenge: 'Kalkulasi meleset: Penilaian intelijen IDF sering gagal mengukur otonomi komandan lapangan Hizbullah (Unit Radwan) yang dapat memicu provokasi faksi secara mandiri di luar rantai komando Beqaa Valley.' },
-    { id: 'S2', group: 'diplomasi', barClass: 'bar-diplomatik', name: 'Resolusi Back-Channel di Oman (Doha-Muscat Track)', baseline: 22, current: 22, tags: ['de-eskalasi'], confBase: 'low', challenge: 'Asumsi linear: Kesepakatan ekonomi-untuk-keamanan (sanksi dicabut sebagian) mengasumsikan faksi Konservatif Garis Keras IRGC di Majlis tunduk penuh pada kalkulasi ekonomi pemerintahan moderat Iran.' },
-    { id: 'S3', group: 'diplomasi', barClass: 'bar-diplomatik', name: 'Rusia-China Paksakan Garis Merah De-eskalasi (Resolusi DK PBB)', baseline: 15, current: 15, tags: ['netral'], confBase: 'low', challenge: 'Mirror-imaging bias: AS dan Israel berasumsi Beijing/Moskow mengutamakan stabilitas global murni, padahal eskalasi terkendali di Timur Tengah justru menguras fokus militer AS dari Indo-Pasifik dan Ukraina.' },
-    { id: 'S4', group: 'militer', barClass: 'bar-militer', name: 'Pre-emptive Strike Udara IDF ke Fordow & Natanz', baseline: 28, current: 28, tags: ['eskalasi', 'tinggi'], confBase: 'med', challenge: 'Optimisme berlebih operasional: Fasilitas pengayaan Fordow tertanam 80 meter di bawah pegunungan; tanpa GBU-57 MOP (Massive Ordnance Penetrator) ganda dari USAF, efektivitas payload bunker buster F-15I/F-35I Israel sangat diragukan secara fisika.' },
-    { id: 'S5', group: 'militer', barClass: 'bar-militer', name: 'Serangan Balasan Rudal Balistik IRGC ke Fasilitas Udara Nevatim (Israel)', baseline: 35, current: 35, tags: ['eskalasi'], confBase: 'high', challenge: 'Kurangnya imajinasi skenario: Paradigma "Strategic Patience" Iran diasumsikan kaku. Pasca operasi "True Promise", doktrin Iran telah bergeser dari proksi ke respon kinetik langsung untuk memulihkan deterrence psikologis domestik.' },
-    { id: 'S6', group: 'militer', barClass: 'bar-militer', name: 'Operasi Darat Israel Skala Terbatas ke Lebanon Selatan', baseline: 20, current: 20, tags: ['eskalasi', 'tinggi'], confBase: 'med', challenge: 'Mispersepsi Attrition: Menguras arsenal Hizbullah lewat operasi udara dinilai cukup. Kenyataannya, infrastruktur terowongan bawah tanah di selatan Litani membuat peperangan darat IDF akan asimetris dan menyerap pasukan cadangan secara fatal.' },
-    { id: 'S7', group: 'militer', barClass: 'bar-militer', name: 'Operasi Udara Koalisi AS (CENTCOM) Mencederai Logistik Houthi', baseline: 42, current: 42, tags: ['eskalasi'], confBase: 'high', challenge: 'Targeting Fallacy: Serangan ke peluncur rudal statis dinilai efektif menurunkan C2 Houthi. Namun komando Houthi menggunakan desentralisasi ekstrem dan manufaktur komponen mandiri bawah tanah yang membuatnya kebal (resilien) pada serangan presisi.' },
-    { id: 'S8', group: 'ekonomi', barClass: 'bar-ekonomi', name: 'Blokade Parsial Selat Hormuz (Mining & FAC Swarm)', baseline: 18, current: 18, tags: ['eskalasi', 'tinggi'], confBase: 'med', challenge: 'Kebutaan strategis: Analisis arus utama beranggapan Iran tidak akan memblokade rute ekspor minyak utamanya ke China. Tetapi, memotong 20% suplai global dapat memicu hiperinflasi seketika, memaksa AS menekan Israel tanpa Iran harus menembakkan satu peluru konvensional pun.' },
-    { id: 'S9', group: 'ekonomi', barClass: 'bar-ekonomi', name: 'Algoritma Finansial Merespons Ketegangan: Brent Lompati USD 115', baseline: 32, current: 32, tags: ['eskalasi'], confBase: 'high', challenge: 'Kapasitas cadangan (spare capacity) Aramco/ADNOC dinilai dapat menyerap guncangan. Namun kepanikan algoritma trading pada pasar berjangka memproses sentimen I&W 10x lebih memutus rasionalitas supply-demand fisik murni.' },
-    { id: 'S10', group: 'ekonomi', barClass: 'bar-ekonomi', name: 'OFAC Treasury AS Memperketat Pemeriksaan Entitas Penyelundup Armada Gelap ("Dark Fleet")', baseline: 55, current: 55, tags: ['eskalasi', 'netral'], confBase: 'high', challenge: 'Keyakinan Buta pada Sanksi: Kampanye tekanan maksimum mengasumsikan aktor akan menyerah. Iran justru telah meresmikan asuransi dan rute perkapalan bayangan non-dolar yang sepenuhnya tebal dari instrumen yurisdiksi OFAC AS.' },
-    { id: 'S11', group: 'ekstrem', barClass: 'bar-ekstrem', name: 'Pergeseran Politik Internal Mendadak: Transisi Kekuasaan Khamenei', baseline: 12, current: 12, tags: ['tinggi'], confBase: 'spec', challenge: 'Miskalkulasi Fragmentasi: Intelijen Barat mengestimasikan kekosongan kekuasaan akan mendisrupsi Rantai Komando. Realitasnya dewan pelaksana IRGC sangat terstruktur secara institusional; suksesi justru memungkinan faksi korps garis keras mengambil total kontrol eksekutif.' },
-    { id: 'S12', group: 'ekstrem', barClass: 'bar-ekstrem', name: 'Israel Deklarasikan Opsi "Samson" (Penggunaan Kapabilitas Nuklir Taktis)', baseline: 4, current: 4, tags: ['eskalasi', 'tinggi'], confBase: 'spec', challenge: "Kemustahilan Tabu: Menganalisa bahwa threshold penggunaan nuklir masih stabil. Jika pertahanan udara David Sling / Arrow jebol secara simultan oleh ribuan hulu ledak, pandangan survival absolut Israel ('ain breira) dapat melampaui tabu nuklir militer modern." },
+    { id: 'S1', group: 'diplomasi', barClass: 'bar-diplomatik', name: 'Gencatan Senjata Taktis Hizbullah-Israel (Blue Line)', baseline: 38, base: 38, current: 38, tags: ['de-eskalasi', 'netral'], confBase: 'med', challenge: 'Kalkulasi meleset: Penilaian intelijen IDF sering gagal mengukur otonomi komandan lapangan Hizbullah (Unit Radwan) yang dapat memicu provokasi faksi secara mandiri di luar rantai komando Beqaa Valley.' },
+    { id: 'S2', group: 'diplomasi', barClass: 'bar-diplomatik', name: 'Resolusi Back-Channel di Oman (Doha-Muscat Track)', baseline: 22, base: 22, current: 22, tags: ['de-eskalasi'], confBase: 'low', challenge: 'Asumsi linear: Kesepakatan ekonomi-untuk-keamanan (sanksi dicabut sebagian) mengasumsikan faksi Konservatif Garis Keras IRGC di Majlis tunduk penuh pada kalkulasi ekonomi pemerintahan moderat Iran.' },
+    { id: 'S3', group: 'diplomasi', barClass: 'bar-diplomatik', name: 'Rusia-China Paksakan Garis Merah De-eskalasi (Resolusi DK PBB)', baseline: 15, base: 15, current: 15, tags: ['netral'], confBase: 'low', challenge: 'Mirror-imaging bias: AS dan Israel berasumsi Beijing/Moskow mengutamakan stabilitas global murni, padahal eskalasi terkendali di Timur Tengah justru menguras fokus militer AS dari Indo-Pasifik dan Ukraina.' },
+    { id: 'S4', group: 'militer', barClass: 'bar-militer', name: 'Pre-emptive Strike Udara IDF ke Fordow & Natanz', baseline: 28, base: 28, current: 28, tags: ['eskalasi', 'tinggi'], confBase: 'med', challenge: 'Optimisme berlebih operasional: Fasilitas pengayaan Fordow tertanam 80 meter di bawah pegunungan; tanpa GBU-57 MOP (Massive Ordnance Penetrator) ganda dari USAF, efektivitas payload bunker buster F-15I/F-35I Israel sangat diragukan secara fisika.' },
+    { id: 'S5', group: 'militer', barClass: 'bar-militer', name: 'Serangan Balasan Rudal Balistik IRGC ke Fasilitas Udara Nevatim (Israel)', baseline: 35, base: 35, current: 35, tags: ['eskalasi'], confBase: 'high', challenge: 'Kurangnya imajinasi skenario: Paradigma "Strategic Patience" Iran diasumsikan kaku. Pasca operasi "True Promise", doktrin Iran telah bergeser dari proksi ke respon kinetik langsung untuk memulihkan deterrence psikologis domestik.' },
+    { id: 'S6', group: 'militer', barClass: 'bar-militer', name: 'Operasi Darat Israel Skala Terbatas ke Lebanon Selatan', baseline: 20, base: 20, current: 20, tags: ['eskalasi', 'tinggi'], confBase: 'med', challenge: 'Mispersepsi Attrition: Menguras arsenal Hizbullah lewat operasi udara dinilai cukup. Kenyataannya, infrastruktur terowongan bawah tanah di selatan Litani membuat peperangan darat IDF akan asimetris dan menyerap pasukan cadangan secara fatal.' },
+    { id: 'S7', group: 'militer', barClass: 'bar-militer', name: 'Operasi Udara Koalisi AS (CENTCOM) Mencederai Logistik Houthi', baseline: 42, base: 42, current: 42, tags: ['eskalasi'], confBase: 'high', challenge: 'Targeting Fallacy: Serangan ke peluncur rudal statis dinilai efektif menurunkan C2 Houthi. Namun komando Houthi menggunakan desentralisasi ekstrem dan manufaktur komponen mandiri bawah tanah yang membuatnya kebal (resilien) pada serangan presisi.' },
+    { id: 'S8', group: 'ekonomi', barClass: 'bar-ekonomi', name: 'Blokade Parsial Selat Hormuz (Mining & FAC Swarm)', baseline: 18, base: 18, current: 18, tags: ['eskalasi', 'tinggi'], confBase: 'med', challenge: 'Kebutaan strategis: Analisis arus utama beranggapan Iran tidak akan memblokade rute ekspor minyak utamanya ke China. Tetapi, memotong 20% suplai global dapat memicu hiperinflasi seketika, memaksa AS menekan Israel tanpa Iran harus menembakkan satu peluru konvensional pun.' },
+    { id: 'S9', group: 'ekonomi', barClass: 'bar-ekonomi', name: 'Algoritma Finansial Merespons Ketegangan: Brent Lompati USD 115', baseline: 32, base: 32, current: 32, tags: ['eskalasi'], confBase: 'high', challenge: 'Kapasitas cadangan (spare capacity) Aramco/ADNOC dinilai dapat menyerap guncangan. Namun kepanikan algoritma trading pada pasar berjangka memproses sentimen I&W 10x lebih memutus rasionalitas supply-demand fisik murni.' },
+    { id: 'S10', group: 'ekonomi', barClass: 'bar-ekonomi', name: 'OFAC Treasury AS Memperketat Pemeriksaan Entitas Penyelundup Armada Gelap ("Dark Fleet")', baseline: 55, base: 55, current: 55, tags: ['eskalasi', 'netral'], confBase: 'high', challenge: 'Keyakinan Buta pada Sanksi: Kampanye tekanan maksimum mengasumsikan aktor akan menyerah. Iran justru telah meresmikan asuransi dan rute perkapalan bayangan non-dolar yang sepenuhnya tebal dari instrumen yurisdiksi OFAC AS.' },
+    { id: 'S11', group: 'ekstrem', barClass: 'bar-ekstrem', name: 'Pergeseran Politik Internal Mendadak: Transisi Kekuasaan Khamenei', baseline: 12, base: 12, current: 12, tags: ['tinggi'], confBase: 'spec', challenge: 'Miskalkulasi Fragmentasi: Intelijen Barat mengestimasikan kekosongan kekuasaan akan mendisrupsi Rantai Komando. Realitasnya dewan pelaksana IRGC sangat terstruktur secara institusional; suksesi justru memungkinan faksi korps garis keras mengambil total kontrol eksekutif.' },
+    { id: 'S12', group: 'ekstrem', barClass: 'bar-ekstrem', name: 'Israel Deklarasikan Opsi "Samson" (Penggunaan Kapabilitas Nuklir Taktis)', baseline: 4, base: 4, current: 4, tags: ['eskalasi', 'tinggi'], confBase: 'spec', challenge: "Kemustahilan Tabu: Menganalisa bahwa threshold penggunaan nuklir masih stabil. Jika pertahanan udara David Sling / Arrow jebol secara simultan oleh ribuan hulu ledak, pandangan survival absolut Israel ('ain breira) dapat melampaui tabu nuklir militer modern." },
 ];
 
 const ESCALATION_CHRONOLOGY = [
@@ -228,4 +228,121 @@ const LIVE_NEWS_POOL = [
     { headline: 'WATCH: Pentagon konfirmasi USS Nimitz & Task Force 50 memutar arah transisi merapat ke area tanggung jawab ARMADA KE-5 pasca provokasi FAC laut IRGC.', source: 'USNAVCENT / CentCom', link: 'https://www.centcom.mil/', impact: 'eskalasi', analysis: 'Proyeksi hard-power AS bersiap mengamankan choke point perdagangan navigasi internasional.', time: 0, intel: 'IMINT', cred: 9 },
     { headline: 'ANALYSIS: Laporan intelijen satelit mengkonfirmasi penarikan mundur skuadron rudal taktis Hezbollah 15km ke utara garis perbatasan Litani malam ini.', source: 'ISW (Institute for Study of War)', link: 'https://www.understandingwar.org/', impact: 'deeskalasi', analysis: 'Manuver mengulur waktu pihak proksi Iran merespons ancaman pre-emptive pengeboman utara oleh IDF.', time: 0, intel: 'IMINT', cred: 8 },
     { headline: 'DIPLOMACY: Resolusi darurat sidang DK PBB menyepakati seruan menahan diri level tertinggi; utusan AS setuju fasilitasi perundingan batas laut tak-langsung.', source: 'UN News', link: 'https://news.un.org/', impact: 'deeskalasi', analysis: 'Sikap AS menjaga stabilator konflik multi-front, mendorong Israel ke meja kalkulasi ulang.', time: 0, intel: 'OSINT', cred: 9 }
+];
+
+const KEY_ASSUMPTIONS = [
+    {
+        id: 'KA1',
+        text: 'Iran tidak akan menyerang aset AS secara langsung',
+        active: true,
+        ifFalse: {
+            S5: +18, S7: +22, S4: +8, S8: +12,
+            S1: -15, S2: -20, S3: -10
+        }
+    },
+    {
+        id: 'KA2',
+        text: 'Israel tidak akan bertindak tanpa koordinasi awal dengan Washington',
+        active: true,
+        ifFalse: {
+            S4: +25, S6: +15, S12: +6,
+            S1: -18, S2: -22, S3: -15
+        }
+    },
+    {
+        id: 'KA3',
+        text: 'China akan mempertahankan postur mediator ekonomi, bukan aktor militer',
+        active: true,
+        ifFalse: {
+            S3: +20, S10: -15,
+            S4: -8, S5: -5
+        }
+    },
+    {
+        id: 'KA4',
+        text: 'Hezbollah tidak akan membuka front penuh tanpa perintah langsung Teheran',
+        active: true,
+        ifFalse: {
+            S6: +28, S5: +12, S8: +10,
+            S1: -25, S4: +5
+        }
+    },
+    {
+        id: 'KA5',
+        text: 'Rezim Iran memprioritaskan survival ekonomi di atas eskalasi militer',
+        active: true,
+        ifFalse: {
+            S4: +15, S5: +20, S8: +18, S6: +10,
+            S2: -20, S9: +12, S12: +5
+        }
+    },
+];
+
+const SNAPSHOT_HISTORY = []; // max 5 snapshots
+const MAX_SNAPSHOTS = 5;
+
+const INTEL_GAPS = [
+    {
+        id: 'IG-01',
+        question: 'Apakah IRGC telah menerima perintah operasional dari Khamenei?',
+        priority: 'KRITIS',
+        status: 'OPEN', // OPEN | PARTIAL | CLOSED
+        relatedScenarios: ['S4', 'S5', 'S12'],
+        closedBoost: { S4: -4, S5: -4, S12: -3 }, // negative = reduces probability if confirmed negative
+        collection: 'SIGINT / HUMINT Teheran'
+    },
+    {
+        id: 'IG-02',
+        question: 'Posisi dan kesiapan tempur armada AS di Teluk Persia 48 jam ke depan?',
+        priority: 'TINGGI',
+        status: 'OPEN',
+        relatedScenarios: ['S5', 'S7'],
+        closedBoost: { S5: +3, S7: +2 },
+        collection: 'IMINT / MASINT Teluk'
+    },
+    {
+        id: 'IG-03',
+        question: 'Apakah saluran back-channel Qatar masih aktif pasca-insiden terakhir?',
+        priority: 'TINGGI',
+        status: 'OPEN',
+        relatedScenarios: ['S1', 'S2', 'S10'],
+        closedBoost: { S1: +5, S2: +4, S10: +2 },
+        collection: 'DIPTEL / HUMINT Doha'
+    },
+    {
+        id: 'IG-04',
+        question: 'Status pengayaan uranium di Fordow — apakah melebihi 84%?',
+        priority: 'KRITIS',
+        status: 'PARTIAL',
+        relatedScenarios: ['S3', 'S11', 'S12'],
+        closedBoost: { S3: +6, S12: +8, S11: +4 },
+        collection: 'IAEA Inspection / OSINT'
+    },
+    {
+        id: 'IG-05',
+        question: 'Apakah Hezbollah telah mengaktifkan sel tidur di luar Lebanon?',
+        priority: 'KRITIS',
+        status: 'OPEN',
+        relatedScenarios: ['S6'],
+        closedBoost: { S6: +10 },
+        collection: 'HUMINT / FININT regional'
+    },
+    {
+        id: 'IG-06',
+        question: 'Volume transfer senjata Iran ke proksi dalam 30 hari terakhir?',
+        priority: 'TINGGI',
+        status: 'OPEN',
+        relatedScenarios: ['S6', 'S7', 'S4'],
+        closedBoost: { S6: +5, S7: +3, S4: +3 },
+        collection: 'IMINT / OSINT pelabuhan'
+    },
+    {
+        id: 'IG-07',
+        question: 'Apakah China telah memberi sinyal kepada Teheran untuk menahan diri?',
+        priority: 'SEDANG',
+        status: 'OPEN',
+        relatedScenarios: ['S3', 'S1', 'S2'],
+        closedBoost: { S3: -5, S1: +4, S2: +3 },
+        collection: 'DIPTEL Beijing / SIGINT'
+    },
 ];

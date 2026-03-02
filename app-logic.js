@@ -1,10 +1,11 @@
-﻿
+
 // ===== STATE =====
 let scenarios = (typeof SCENARIOS !== 'undefined') ? SCENARIOS.map(s => ({ ...s })) : [];
 let currentThreatLevel = 4, refreshCount = 0, countdownSeconds = 300;
 let countdownTimer = null, isLoading = false, leafletMap = null;
 let mapLayers = {}, radarChart = null, currentPerspective = 'iran';
 let activeFeedFilter = 'all', credFilterOn = false, uvVisible = false;
+let lastRedPhoneTime = 0;
 
 // Timers for memory management
 let masterClockTimer = null;
@@ -14,6 +15,10 @@ let bootFailsafeTimer = null;
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
+    // Sync base to initial current values
+    scenarios = scenarios.map(s => ({ ...s, base: s.base ?? s.current }));
+    if (typeof recomputeAllCurrents === 'function') recomputeAllCurrents();
+
     runBootSequence().catch(e => { });
     // 15-second hard failsafe: force-hide overlay no matter what
     if (bootFailsafeTimer) clearTimeout(bootFailsafeTimer);
@@ -102,16 +107,19 @@ async function runBootSequence() {
                 if (selected.type === 'verified' && typeof VERIFIED_NEWS !== 'undefined') {
                     nextItem.time = 0;
                     VERIFIED_NEWS.unshift(nextItem);
+                    if (VERIFIED_NEWS.length > 25) VERIFIED_NEWS.splice(20);
                     renderNews();
                     const c = document.getElementById('osint-feed');
                     if (c && c.firstElementChild) c.firstElementChild.classList.add('flash-new');
                 } else if (selected.type === 'propaganda' && typeof PROPAGANDA_NEWS !== 'undefined') {
                     PROPAGANDA_NEWS.unshift(nextItem);
+                    if (PROPAGANDA_NEWS.length > 15) PROPAGANDA_NEWS.splice(12);
                     renderPropaganda();
                     const c = document.getElementById('prop-feed');
                     if (c && c.firstElementChild) c.firstElementChild.classList.add('flash-new');
                 } else if (selected.type === 'unverified' && typeof UNVERIFIED_NEWS !== 'undefined') {
                     UNVERIFIED_NEWS.unshift(nextItem);
+                    if (UNVERIFIED_NEWS.length > 10) UNVERIFIED_NEWS.splice(8);
                     renderUnverified();
                     const c = document.getElementById('unverified-feed');
                     if (c && c.firstElementChild) c.firstElementChild.classList.add('flash-new');
@@ -184,13 +192,23 @@ async function simulateRefresh(isInitial) {
     }
     try {
         applyProbabilityUpdate();
-        updateThreatLevel();
 
         // --- RED PHONE TRIGGER LOGIC ---
         if (!isInitial) {
-            const criticalSpike = scenarios.find(s => (s.group === 'militer' || s.group === 'ekonomi') && (s.current - s.baseline) >= 15);
-            if (criticalSpike) {
-                document.getElementById('rp-message').innerHTML = `Peringatan Darurat: Lonjakan tajam terdeteksi pada skenario <strong>${criticalSpike.name}</strong> (+${criticalSpike.current - criticalSpike.baseline}%).<br><br>Skenario krusial ini melampaui red-line sistem analisis otomatis. Diperlukan eskalasi intelijen ke pengambil kebijakan segera.`;
+            const RPCOOLDOWN = 28 * 60 * 1000;
+            const criticalSpike = scenarios.find(s =>
+                s.group === 'militer' &&
+                s.confBase !== 'spec' &&
+                s.current > 38 &&
+                (s.current - s.baseline) >= 15
+            );
+            if (criticalSpike && (Date.now() - lastRedPhoneTime > RPCOOLDOWN)) {
+                lastRedPhoneTime = Date.now();
+                document.getElementById('rp-message').innerHTML =
+                    `Peringatan Darurat: Lonjakan tajam pada skenario 
+                    <strong>${criticalSpike.name}</strong> 
+                    (+${criticalSpike.current - criticalSpike.baseline}%).<br><br>
+                    Threshold red-line sistem analisis dilampaui.`;
                 document.getElementById('red-phone-modal').classList.remove('hidden');
             }
         }
@@ -240,14 +258,55 @@ function computeIW() {
     });
 }
 
+function recomputeAllCurrents() {
+    // Start from clean base for each scenario
+    scenarios = scenarios.map(s => ({ ...s, current: Math.round(s.base) }));
+
+    // Layer 1: Apply assumption violation deltas
+    if (typeof KEY_ASSUMPTIONS !== 'undefined') {
+        KEY_ASSUMPTIONS.forEach(ka => {
+            if (ka.active) return;
+            Object.entries(ka.ifFalse).forEach(([id, delta]) => {
+                const idx = scenarios.findIndex(sc => sc.id === id);
+                if (idx >= 0) {
+                    scenarios[idx] = {
+                        ...scenarios[idx],
+                        current: Math.round(Math.min(98, Math.max(2,
+                            scenarios[idx].current + delta)))
+                    };
+                }
+            });
+        });
+    }
+
+    // Layer 2: Apply closed gap boosts on top of assumption-adjusted values
+    if (typeof INTEL_GAPS !== 'undefined') {
+        INTEL_GAPS.forEach(gap => {
+            if (gap.status !== 'CLOSED') return;
+            Object.entries(gap.closedBoost).forEach(([id, delta]) => {
+                const idx = scenarios.findIndex(sc => sc.id === id);
+                if (idx >= 0) {
+                    scenarios[idx] = {
+                        ...scenarios[idx],
+                        current: Math.round(Math.min(98, Math.max(2,
+                            scenarios[idx].current + delta)))
+                    };
+                }
+            });
+        });
+    }
+}
+
 function applyProbabilityUpdate() {
     // Add noise to IW values
     if (typeof IW_INDICATORS !== 'undefined') {
         IW_INDICATORS.forEach(i => {
             if (typeof i.val === 'number' && typeof i.triggerThresh === 'number' && typeof i.base === 'number') {
                 const maxDelta = Math.abs(i.triggerThresh - i.base) * 0.3; // 30% volatility max
+                const iwDiff = i.val - i.base;
+                const iwRev = -iwDiff * 0.08;
                 const shift = (Math.random() - 0.5) * maxDelta;
-                i.val = Math.max(0, i.val + shift); // ensure no negative
+                i.val = Math.max(0, i.val + iwRev + shift); // ensure no negative
             }
         });
     }
@@ -256,10 +315,15 @@ function applyProbabilityUpdate() {
     const iwT = IW_INDICATORS.filter(i => i.status === 'triggered').length;
     const mul = 1 + iwT * 0.02; // I&W multiplier
     scenarios = scenarios.map(s => {
-        const diff = s.current - s.baseline, rev = -diff * 0.12, noise = (Math.random() - 0.4) * 6 * mul;
-        // Clamp explicitly to 0-100
-        return { ...s, current: Math.min(100, Math.max(0, Math.round(s.current + rev + noise))) };
+        const diff = s.base - s.baseline, rev = -diff * 0.12, noise = (Math.random() - 0.5) * 6 * mul;
+        // Clamp explicitly to 3-97 directly on the base
+        const newBase = s.base + rev + noise;
+        return { ...s, base: Math.round(Math.min(97, Math.max(3, newBase))) };
     });
+
+    // Recompute s.current from base + all active modifiers
+    recomputeAllCurrents();
+    updateThreatLevel();
 }
 function computeConf(s) {
     const d = Math.abs(s.current - s.baseline);
@@ -288,10 +352,261 @@ function updateThreatLevel() {
     currentThreatLevel = sc >= 80 ? 4 : sc >= 60 ? 3 : sc >= 40 ? 2 : sc >= 20 ? 1 : 0;
 }
 
+function toggleAssumption(id) {
+    if (typeof KEY_ASSUMPTIONS === 'undefined') return;
+    const ka = KEY_ASSUMPTIONS.find(k => k.id === id);
+    if (!ka) return;
+    ka.active = !ka.active;
+
+    recomputeAllCurrents();  // <-- replaces applyAssumptionShifts()
+    updateThreatLevel();
+    renderAssumptions();
+    renderScenarios();
+    renderDeltaTracker();
+    renderThreat();
+    renderAnalystSummary();
+    renderSIGINT();
+}
+
+function renderAssumptions() {
+    const el = document.getElementById('assumptions-list');
+    if (!el || typeof KEY_ASSUMPTIONS === 'undefined') return;
+
+    const violatedCount = KEY_ASSUMPTIONS.filter(k => !k.active).length;
+    const badge = document.getElementById('assumptions-violated-count');
+    if (badge) badge.textContent = violatedCount > 0
+        ? `${violatedCount} DILANGGAR` : 'SEMUA AKTIF';
+    if (badge) badge.style.color = violatedCount > 0
+        ? 'var(--accent-red)' : 'var(--accent-green)';
+
+    el.innerHTML = KEY_ASSUMPTIONS.map(ka => {
+        const violated = !ka.active;
+        return `<div class="ka-item ${violated ? 'ka-violated' : ''}">
+            <div class="ka-header">
+                <span class="ka-id">${ka.id}</span>
+                <label class="ka-toggle-wrap">
+                    <input type="checkbox" 
+                        class="ka-checkbox"
+                        ${ka.active ? 'checked' : ''}
+                        onchange="toggleAssumption('${ka.id}')" />
+                    <span class="ka-toggle-label">
+                        ${ka.active ? 'AKTIF' : 'DILANGGAR'}
+                    </span>
+                </label>
+            </div>
+            <div class="ka-text ${violated ? 'ka-text-violated' : ''}">${ka.text}</div>
+            ${violated ? `<div class="ka-impact-hint">
+                Skenario terpengaruh: ${Object.keys(ka.ifFalse).join(', ')}
+            </div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+function saveSnapshot() {
+    if (typeof SNAPSHOT_HISTORY === 'undefined') return;
+
+    const now = new Date();
+    const timeLabel = now.toLocaleTimeString('id-ID', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+
+    const snap = {
+        time: timeLabel,
+        threatLevel: currentThreatLevel || 0,
+        probabilities: {}
+    };
+
+    // Pastikan tidak ada probabilitas yang tumpang tindih aneh, clamp 0-100
+    scenarios.forEach(s => {
+        s.current = Math.max(0, Math.min(100, s.current));
+    });
+
+    scenarios.forEach(s => {
+        snap.probabilities[s.id] = Math.round(s.current);
+    });
+
+    SNAPSHOT_HISTORY.push(snap);
+    if (SNAPSHOT_HISTORY.length > MAX_SNAPSHOTS) {
+        SNAPSHOT_HISTORY.shift(); // remove oldest
+    }
+
+    renderSnapshotPanel();
+    renderScenarios(); // re-render to show updated sparklines
+
+    // Flash feedback on button
+    const btn = document.getElementById('snapshot-btn');
+    if (btn) {
+        btn.textContent = '✓ TERSIMPAN';
+        btn.style.color = 'var(--accent-green)';
+        btn.style.borderColor = 'var(--accent-green)';
+        setTimeout(() => {
+            btn.textContent = '◉ SIMPAN SNAPSHOT';
+            btn.style.color = '';
+            btn.style.borderColor = '';
+        }, 1500);
+    }
+}
+
+function buildSparkline(scenarioId) {
+    if (!SNAPSHOT_HISTORY || SNAPSHOT_HISTORY.length < 2) return '';
+
+    const values = SNAPSHOT_HISTORY.map(snap =>
+        snap.probabilities[scenarioId] ?? null
+    ).filter(v => v !== null);
+
+    if (values.length < 2) return '';
+
+    const w = 60, h = 18, pad = 2;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
+
+    const points = values.map((v, i) => {
+        const x = pad + (i / (values.length - 1)) * (w - pad * 2);
+        const y = h - pad - ((v - min) / range) * (h - pad * 2);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+
+    const last = values[values.length - 1];
+    const prev = values[values.length - 2];
+    const trend = last > prev + 1 ? 'up' : last < prev - 1 ? 'down' : 'flat';
+    const lineColor = trend === 'up' ? '#ff3355' :
+        trend === 'down' ? '#00ff88' : '#ffd700';
+    const arrow = trend === 'up' ? '▲' : trend === 'down' ? '▼' : '▬';
+    const arrowColor = lineColor;
+
+    return `<span class="sparkline-wrap" title="Tren ${values.length} snapshot terakhir">
+        <svg width="${w}" height="${h}" class="sparkline-svg">
+            <polyline points="${points}"
+                fill="none" stroke="${lineColor}"
+                stroke-width="1.5" stroke-linejoin="round"/>
+            <circle cx="${points.split(' ').pop().split(',')[0]}"
+                cy="${points.split(' ').pop().split(',')[1]}"
+                r="2" fill="${lineColor}"/>
+        </svg>
+        <span class="spark-arrow" style="color:${arrowColor}">${arrow}</span>
+    </span>`;
+}
+
+function renderSnapshotPanel() {
+    const el = document.getElementById('snapshot-list');
+    if (!el) return;
+
+    if (SNAPSHOT_HISTORY.length === 0) {
+        el.innerHTML = '<div class="snap-empty">Belum ada snapshot tersimpan.</div>';
+        return;
+    }
+
+    // Show newest first
+    const reversed = [...SNAPSHOT_HISTORY].reverse();
+    el.innerHTML = reversed.map((snap, i) => {
+        const isLatest = i === 0;
+        const topScenarios = Object.entries(snap.probabilities)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([id, pct]) => `<span class="snap-sc">${id}:${pct}%</span>`)
+            .join('');
+        return `<div class="snap-item ${isLatest ? 'snap-latest' : ''}">
+            <div class="snap-header">
+                <span class="snap-time">${isLatest ? '● ' : '○ '}${snap.time}</span>
+                <span class="snap-threat">TL:${snap.threatLevel}</span>
+            </div>
+            <div class="snap-top">${topScenarios}</div>
+        </div>`;
+    }).join('');
+
+    const badge = document.getElementById('snap-count');
+    if (badge) badge.textContent = `${SNAPSHOT_HISTORY.length} / ${MAX_SNAPSHOTS}`;
+}
+
+// ===== INTELLIGENCE GAPS =====
+function cycleGapStatus(id) {
+    if (typeof INTEL_GAPS === 'undefined') return;
+    const gap = INTEL_GAPS.find(g => g.id === id);
+    if (!gap) return;
+
+    // Cycle: OPEN → PARTIAL → CLOSED → OPEN
+    const cycle = { 'OPEN': 'PARTIAL', 'PARTIAL': 'CLOSED', 'CLOSED': 'OPEN' };
+    gap.status = cycle[gap.status];
+
+    recomputeAllCurrents();  // <-- replaces applyGapBoosts()
+    updateThreatLevel();
+    renderGapPanel();
+    renderScenarios();
+    renderDeltaTracker();
+    renderThreat();
+    renderSIGINT();
+    renderAnalystSummary();
+}
+
+function getOpenGapCount() {
+    if (typeof INTEL_GAPS === 'undefined') return 0;
+    return INTEL_GAPS.filter(g => g.status === 'OPEN').length;
+}
+
+function renderGapPanel() {
+    const el = document.getElementById('gap-list');
+    if (!el || typeof INTEL_GAPS === 'undefined') return;
+
+    const openCount = INTEL_GAPS.filter(g => g.status === 'OPEN').length;
+    const partialCount = INTEL_GAPS.filter(g => g.status === 'PARTIAL').length;
+    const closedCount = INTEL_GAPS.filter(g => g.status === 'CLOSED').length;
+
+    // Update summary badge
+    const badge = document.getElementById('gap-summary-badge');
+    if (badge) {
+        badge.textContent = `${openCount} OPEN · ${partialCount} PARTIAL · ${closedCount} CLOSED`;
+        badge.style.color = openCount >= 5 ? 'var(--accent-red)'
+            : openCount >= 3 ? 'var(--accent-orange)'
+                : 'var(--accent-green)';
+    }
+
+    const priorityColor = {
+        'KRITIS': 'var(--accent-red)',
+        'TINGGI': 'var(--accent-orange)',
+        'SEDANG': 'var(--accent-yellow)'
+    };
+
+    const statusIcon = {
+        'OPEN': '○',
+        'PARTIAL': '◑',
+        'CLOSED': '●'
+    };
+
+    const statusColor = {
+        'OPEN': 'var(--accent-red)',
+        'PARTIAL': 'var(--accent-orange)',
+        'CLOSED': 'var(--accent-green)'
+    };
+
+    el.innerHTML = INTEL_GAPS.map(gap => `
+        <div class="gap-item gap-${gap.status.toLowerCase()}"
+             onclick="cycleGapStatus('${gap.id}')"
+             title="Klik untuk ubah status koleksi">
+            <div class="gap-header">
+                <span class="gap-id">${gap.id}</span>
+                <span class="gap-priority" 
+                      style="color:${priorityColor[gap.priority]}">
+                    ${gap.priority}
+                </span>
+                <span class="gap-status" 
+                      style="color:${statusColor[gap.status]}">
+                    ${statusIcon[gap.status]} ${gap.status}
+                </span>
+            </div>
+            <div class="gap-question">${gap.question}</div>
+            <div class="gap-footer">
+                <span class="gap-collection">${gap.collection}</span>
+                <span class="gap-related">${gap.relatedScenarios.join(' ')}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
 // ===== RENDER ALL =====
 function renderAll() {
     renderThreat(); renderScenarios(); renderDeltaTracker(); renderNews();
-    renderAnalystSummary(); renderIWCounts(); renderSignalNoise(); renderSIGINT();
+    renderAnalystSummary(); renderIW(); renderIWCounts(); renderSignalNoise(); renderSIGINT(); renderAssumptions(); renderSnapshotPanel(); renderGapPanel();
 }
 
 // ===== THREAT =====
@@ -329,6 +644,99 @@ function renderThreat() {
     }
 }
 
+function computeDST(scenario) {
+    const p = scenario.current;
+
+    // --- Belief factor ---
+    let beliefFactor = 0.70;
+
+    // ACH contribution: find best matching hypothesis for this scenario
+    // Use ACH_MATRIX from app.js — find hypothesis with fewest inconsistencies
+    // that is thematically related (simplification: use scenario index parity)
+    try {
+        const achRows = Object.values(ACH_MATRIX);
+        const scenIndex = scenarios.indexOf(scenario);
+        const relRow = achRows[scenIndex % achRows.length];
+        if (relRow) {
+            const inconsistencies = relRow.filter(v => v === -1 || v === -2).length;
+            if (inconsistencies === 0) beliefFactor += 0.05;
+            else if (inconsistencies >= 3) beliefFactor -= 0.03;
+        }
+    } catch (e) { }
+
+    // I&W contribution: triggered indicators in same group boost belief
+    try {
+        const groupMap = {
+            militer: ['S4', 'S5', 'S6', 'S7'],
+            nuklir: ['S3', 'S11', 'S12'],
+            ekonomi: ['S8', 'S9'],
+            diplomatik: ['S1', 'S2', 'S10']
+        };
+        let scenGroup = null;
+        for (const [g, ids] of Object.entries(groupMap)) {
+            if (ids.includes(scenario.id)) { scenGroup = g; break; }
+        }
+        if (scenGroup) {
+            const triggered = IW_INDICATORS.filter(
+                iw => iw.group === scenGroup && iw.status === 'triggered'
+            ).length;
+            beliefFactor += triggered * 0.04;
+        }
+    } catch (e) { }
+
+    // Assumption violation: each violation that touches this scenario widens doubt
+    let violations = 0;
+    try {
+        KEY_ASSUMPTIONS.forEach(ka => {
+            if (!ka.active && ka.ifFalse[scenario.id] !== undefined) {
+                violations++;
+            }
+        });
+    } catch (e) { }
+    beliefFactor -= violations * 0.06;
+
+    // --- Plausibility factor ---
+    let plausFactor = 1.30;
+    try {
+        const groupMap2 = {
+            militer: ['S4', 'S5', 'S6', 'S7'],
+            nuklir: ['S3', 'S11', 'S12'],
+            ekonomi: ['S8', 'S9'],
+            diplomatik: ['S1', 'S2', 'S10']
+        };
+        let sg = null;
+        for (const [g, ids] of Object.entries(groupMap2)) {
+            if (ids.includes(scenario.id)) { sg = g; break; }
+        }
+        if (sg) {
+            const triggeredCount = IW_INDICATORS.filter(
+                iw => iw.group === sg && iw.status === 'triggered'
+            ).length;
+            plausFactor -= triggeredCount * 0.05;
+        }
+    } catch (e) { }
+    plausFactor += violations * 0.08;
+
+    // Open gaps widen plausibility (more unknown = wider uncertainty band)
+    try {
+        const openGaps = INTEL_GAPS.filter(g =>
+            g.status === 'OPEN' && g.relatedScenarios.includes(scenario.id)
+        ).length;
+        plausFactor += openGaps * 0.04;
+    } catch (e) { }
+
+    plausFactor = Math.min(1.55, Math.max(1.05, plausFactor));
+
+    // Clamp belief factor
+    beliefFactor = Math.min(0.92, Math.max(0.40, beliefFactor));
+
+    const belief = Math.round(Math.min(97, p * beliefFactor));
+    const plausibility = Math.round(Math.min(98, p * plausFactor));
+    const uncertainty = Math.max(0, plausibility - belief);
+
+    return { belief, plausibility, uncertainty };
+}
+
 // ===== SCENARIOS =====
 const GRP = { diplomasi: 'group-diplomasi', militer: 'group-militer', ekonomi: 'group-ekonomi', ekstrem: 'group-ekstrem' };
 function renderScenarios() {
@@ -344,13 +752,31 @@ function renderScenarios() {
         el.insertAdjacentHTML('beforeend', `<div class="scenario-item">
       <div class="scenario-header">
         <div class="scenario-name">${esc(s.name)}</div>
-        <div class="scenario-prob" style="color:${pc}">${s.current}%</div>
+        <div class="scenario-prob" style="color:${pc}">${s.current}%
+            ${buildSparkline(s.id)}
+        </div>
         <div class="scenario-delta ${dc}">${ds}</div>
+      </div>
       </div>
       <div class="bar-container">
         <div class="bar-baseline" style="width:${s.baseline}%"></div>
         <div class="bar-current ${s.barClass}" style="width:${s.current}%"></div>
       </div>
+      ${(() => {
+                const dst = computeDST(s);
+                const uClass = dst.uncertainty > 25 ? 'dst-high-unc'
+                    : dst.uncertainty > 12 ? 'dst-med-unc' : 'dst-low-unc';
+                return `<div class="dst-row">
+            <span class="dst-label">Bel</span>
+            <span class="dst-val">${dst.belief}%</span>
+            <span class="dst-sep">|</span>
+            <span class="dst-label">Pl</span>
+            <span class="dst-val">${dst.plausibility}%</span>
+            <span class="dst-sep">|</span>
+            <span class="dst-label dst-unc ${uClass}">?</span>
+            <span class="dst-val ${uClass}">${dst.uncertainty}%</span>
+        </div>`;
+            })()}
       <div class="scenario-footer">${tags}<span class="conf-badge ${conf}">${CLBL[conf]}</span></div>
       ${s.challenge ? `<button class="btn-challenge" onclick="toggleChallenge('${s.id}')">⚡ CHALLENGE THIS ANALYSIS <span style="float:right;font-size:8px;opacity:0.5">(DEVIL'S ADVOCATE)</span></button><div class="challenge-box" id="cb-${s.id}"><div class="cb-label">ACH HIGHLIGHT <span>(AI Red Team)</span></div>${esc(s.challenge)}</div>` : ''}
     </div>`);
@@ -436,14 +862,111 @@ function renderUnverified() {
     <div class="uv-impact">Potensi Dampak (IF valid): <strong>${esc(n.impact)}</strong></div>
   </div>`).join('');
 }
+function buildAnalystSummary() {
+    // --- Gather live state ---
+    const triggered = IW_INDICATORS.filter(i => i.status === 'triggered');
+    const watched = IW_INDICATORS.filter(i => i.status === 'watch');
+
+    // Top mover: scenario with highest absolute delta from baseline
+    const topMover = scenarios
+        .map(s => ({ ...s, absDelta: Math.abs(s.current - s.baseline) }))
+        .sort((a, b) => b.absDelta - a.absDelta)[0];
+
+    // Highest probability military scenario
+    const topMilitary = scenarios
+        .filter(s => s.group === 'militer')
+        .sort((a, b) => b.current - a.current)[0];
+
+    // Highest probability de-escalation scenario  
+    const topDiplomasi = scenarios
+        .filter(s => s.group === 'diplomasi')
+        .sort((a, b) => b.current - a.current)[0];
+
+    // ACH winner (hypothesis with fewest weighted inconsistencies)
+    let achWinner = null;
+    if (typeof ACH_HYPOTHESES !== 'undefined' && typeof ACH_EVIDENCE !== 'undefined') {
+        const achScores = ACH_HYPOTHESES.map((h, hi) => {
+            const incons = ACH_EVIDENCE.reduce((sum, e) =>
+                sum + (e.cells[hi] === 'I' ? (e.weight || 1) : 0), 0);
+            return { name: h.short, incons };
+        });
+        achWinner = achScores.reduce((a, b) => a.incons < b.incons ? a : b);
+    }
+
+    // --- Threat level label ---
+    const threatLabels = ['RENDAH', 'SEDANG', 'WASPADA', 'TINGGI', 'KRITIS'];
+    const threatLabel = threatLabels[currentThreatLevel] || 'TIDAK DIKETAHUI';
+
+    // --- Build contextual sentences ---
+    const parts = [];
+
+    // Opening: threat + IW state
+    if (currentThreatLevel >= 4) {
+        parts.push(`KRITIS — ${triggered.length} indikator I&W aktif (TRIGGERED) dengan ${watched.length} dalam status WATCH. Sistem berada di ambang batas eskalasi penuh.`);
+    } else if (currentThreatLevel === 3) {
+        parts.push(`Level ancaman TINGGI — ${triggered.length} I&W triggered, ${watched.length} WATCH. Postur kinetik sedang meningkat secara terukur.`);
+    } else if (currentThreatLevel === 2) {
+        parts.push(`Level ancaman WASPADA — ${triggered.length} indikator dipicu, ${watched.length} dalam pemantauan aktif. Deterrence masih berfungsi namun rentan.`);
+    } else {
+        parts.push(`Level ancaman ${threatLabel} — ${triggered.length} I&W triggered. Situasi terkendali dalam parameter pemantauan rutin.`);
+    }
+
+    // Middle: top mover context
+    if (topMover && topMover.absDelta >= 3) {
+        const dir = topMover.current > topMover.baseline ? 'naik' : 'turun';
+        const delta = topMover.current - topMover.baseline;
+        const sign = delta > 0 ? '+' : '';
+        parts.push(`Delta terbesar: skenario "${topMover.name}" ${dir} ${sign}${delta}% dari baseline — menjadi focal point perhatian analis sesi ini.`);
+    }
+
+    // Middle: military vs diplomacy tension
+    if (topMilitary && topDiplomasi) {
+        const tension = topMilitary.current - topDiplomasi.current;
+        if (tension > 20) {
+            parts.push(`Ketegangan asimetris: kapabilitas militer (${topMilitary.name}: ${topMilitary.current}%) secara signifikan melampaui opsi diplomatik (${topDiplomasi.name}: ${topDiplomasi.current}%). Ruang manuver non-kinetik menyempit.`);
+        } else if (tension < -10) {
+            parts.push(`Momentum diplomatik terdeteksi: ${topDiplomasi.name} (${topDiplomasi.current}%) mengungguli tekanan militer. Window de-eskalasi terbuka.`);
+        } else {
+            parts.push(`Keseimbangan rapuh antara opsi militer (${topMilitary.current}%) dan jalur diplomatik (${topDiplomasi.current}%). Kalkulasi aktor sedang dalam fase reassessment.`);
+        }
+    }
+
+    // Closing: ACH recommendation
+    if (achWinner) {
+        parts.push(`ACH saat ini menunjuk hipotesis paling konsisten: ${achWinner.name} (${achWinner.incons} inkonsistensi berbobot). Prioritaskan collection requirement pada indikator diagnostik untuk konfirmasi.`);
+    }
+
+    return parts.join(' ');
+}
+
 function renderAnalystSummary() {
-    document.getElementById('analyst-summary').textContent = ANALYST_SUMMARIES[Math.floor(Math.random() * ANALYST_SUMMARIES.length)];
+    const el = document.getElementById('analyst-summary');
+    if (!el) return;
+    try {
+        el.textContent = buildAnalystSummary();
+    } catch (e) {
+        // Graceful fallback to static summaries if something goes wrong
+        if (typeof ANALYST_SUMMARIES !== 'undefined' && ANALYST_SUMMARIES.length > 0) {
+            el.textContent = ANALYST_SUMMARIES[0];
+        }
+    }
 }
 function renderSignalNoise() {
-    const sig = Math.min(95, 62 + Math.round(Math.random() * 20)), noise = 100 - sig;
-    document.getElementById('sn-bar').style.width = sig + '%';
-    document.getElementById('sn-noise').style.width = noise + '%';
-    document.getElementById('sn-ratio').textContent = `${sig}:${noise}`;
+    if (typeof VERIFIED_NEWS === 'undefined' || typeof PROPAGANDA_NEWS === 'undefined') return;
+    const highCred = VERIFIED_NEWS.filter(n => n.cred >= 8).length;
+    const propagandaLow = PROPAGANDA_NEWS.filter(n => n.cred < 5).length;
+    const total = VERIFIED_NEWS.length + PROPAGANDA_NEWS.length;
+    if (total === 0) return;
+    const sig = Math.min(92, Math.max(45,
+        Math.round(((highCred * 1.4 - propagandaLow * 0.7) / total) * 100 + 42)
+    ));
+    const noise = 100 - sig;
+    const snBar = document.getElementById('sn-bar');
+    const snNoise = document.getElementById('sn-noise');
+    const snRatio = document.getElementById('sn-ratio');
+    if (snBar) snBar.style.width = sig + '%';
+    if (snNoise) snNoise.style.width = noise + '%';
+    if (snRatio) snRatio.textContent = `${sig}:${noise}`;
 }
 
 // ===== I&W =====
@@ -454,14 +977,18 @@ function renderIW() {
         return `<div class="iw-category">
       <div class="iw-cat-title">${cat}</div>
       <div class="iw-row header"><div>STS</div><div>CR-ID</div><div>INDIKATOR</div><div>THRESHOLD</div><div>READING</div><div>↕</div></div>
-      ${rows.map(r => `<div class="iw-row">
+      ${rows.map(r => {
+            const threshLabel = r.inverse
+                ? `&lt; ${r.triggerThresh} ${r.unit}`
+                : `&gt; ${r.triggerThresh} ${r.unit}`;
+            return `<div class="iw-row">
         <div><div class="iw-dot ${r.status}"></div></div>
         <div class="iw-cr">${r.cr}</div>
         <div class="iw-name">${esc(r.name)}</div>
-        <div class="iw-threshold">${esc(r.threshold)}</div>
+        <div class="iw-threshold">${threshLabel}</div>
         <div class="iw-reading ${r.status}">${esc(r.reading)}</div>
         <div class="iw-trend ${r.trend === 'up' ? 'up' : r.trend === 'down' ? 'down' : 'flat'}">${r.trend === 'up' ? '↑' : r.trend === 'down' ? '↓' : '→'}</div>
-      </div>`).join('')}
+      </div>`}).join('')}
     </div>`;
     }).join('');
     renderIWCounts();
@@ -547,10 +1074,10 @@ function renderRedTeam() {
     <div class="wg-utility"><span style="font-size:9px;color:var(--text-dim);font-family:var(--font-data);min-width:52px">${w.l2}</span><div class="wg-bar"><div class="wg-fill" style="width:${w.util2}%;background:${w.col2}"></div></div><span class="wg-score" style="color:${w.col2}">${w.util2}</span></div>
   </div>`).join('');
 }
-function setPerspective(p) {
+function setPerspective(p, el) {
     currentPerspective = p;
     document.querySelectorAll('.pv-btn').forEach(b => b.classList.remove('active'));
-    event.currentTarget.classList.add('active');
+    if (el) el.classList.add('active');
     renderRedTeam();
 }
 
@@ -639,8 +1166,108 @@ function renderCone() {
 }
 
 // ===== SIGINT FUSION =====
+function computeFusionScore() {
+    if (typeof VERIFIED_NEWS === 'undefined' || typeof SIGINT_SOURCES === 'undefined'
+        || typeof IW_INDICATORS === 'undefined') return 72;
+    const avgCred = VERIFIED_NEWS.length > 0
+        ? VERIFIED_NEWS.reduce((s, n) => s + n.cred, 0) / VERIFIED_NEWS.length
+        : 7;
+    const t1Ratio = SIGINT_SOURCES.filter(s => s.tier === 't1').length
+        / SIGINT_SOURCES.length;
+    const anomalyPenalty = SIGINT_SOURCES.filter(s => s.anomaly).length * 5;
+    const clearRatio = IW_INDICATORS.filter(i => i.status === 'clear').length
+        / IW_INDICATORS.length;
+    return Math.min(96, Math.round(
+        (avgCred * 7) + (t1Ratio * 18) + (clearRatio * 12) + 22 - anomalyPenalty
+    ));
+}
+
+function computePredictiveAnalytics() {
+    // --- Helper: get current scenario probability by ID ---
+    const sc = id => {
+        const s = scenarios.find(x => x.id === id);
+        return s ? s.current : 0;
+    };
+
+    // --- Helper: count IW by status ---
+    const iwCount = status => IW_INDICATORS.filter(i => i.status === status).length;
+
+    // === PREDICTION 1: Eskalasi militer dalam 72 jam ===
+    // Based on: average military scenarios + IW triggered weight
+    const milAvg = (sc('S4') + sc('S5') + sc('S6') + sc('S7')) / 4;
+    const iwTriggeredBonus = iwCount('triggered') * 2.5;
+    const iwWatchBonus = iwCount('watch') * 0.8;
+    const p1Raw = Math.round(milAvg * 0.55 + iwTriggeredBonus + iwWatchBonus);
+    const p1 = Math.min(95, Math.max(5, p1Raw));
+    const p1Conf = p1 > 55 ? 'HIGH' : p1 > 30 ? 'MED' : 'LOW';
+    const p1Label = p1 >= 75 ? 'HAMPIR PASTI' : p1 >= 55 ? 'TINGGI'
+        : p1 >= 35 ? 'MUNGKIN' : p1 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
+
+    // === PREDICTION 2: Harga minyak melampaui $105 minggu ini ===
+    // Based on: S8 (Hormuz) + S9 (oil price) + S7 (US ops Yemen)
+    const p2Raw = Math.round(sc('S9') * 0.55 + sc('S8') * 0.30 + sc('S7') * 0.15);
+    const p2 = Math.min(95, Math.max(5, p2Raw));
+    const p2Conf = sc('S9') > 45 ? 'HIGH' : sc('S9') > 30 ? 'MED' : 'LOW';
+    const p2Label = p2 >= 75 ? 'HAMPIR PASTI' : p2 >= 55 ? 'TINGGI'
+        : p2 >= 35 ? 'MUNGKIN' : p2 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
+
+    // === PREDICTION 3: Laporan IAEA baru dalam 7 hari ===
+    // Based on: CR-007 (IAEA inspection failure) + CR-014 (Fordow excavation)
+    const cr007 = IW_INDICATORS.find(i => i.cr === 'CR-007');
+    const cr014 = IW_INDICATORS.find(i => i.cr === 'CR-014');
+    const iaeatriggered = (cr007 && cr007.status === 'triggered') ? 30 :
+        (cr007 && cr007.status === 'watch') ? 15 : 5;
+    const fordowBonus = (cr014 && cr014.status === 'triggered') ? 20 :
+        (cr014 && cr014.status === 'watch') ? 10 : 0;
+    const p3 = Math.min(97, Math.max(40, 45 + iaeatriggered + fordowBonus));
+    const p3Conf = p3 > 70 ? 'HIGH' : 'MED';
+    const p3Label = p3 >= 75 ? 'HAMPIR PASTI' : p3 >= 55 ? 'TINGGI'
+        : p3 >= 35 ? 'MUNGKIN' : 'RENDAH';
+
+    // === PREDICTION 4: Terobosan diplomasi Qatar/Oman dalam 14 hari ===
+    // Based on: S1 + S2 (diplomasi) — inversely affected by military pressure
+    const dipAvg = (sc('S1') + sc('S2')) / 2;
+    const milPressure = (sc('S4') + sc('S5')) / 2;
+    const p4Raw = Math.round(dipAvg * 0.60 - milPressure * 0.15 + 5);
+    const p4 = Math.min(85, Math.max(5, p4Raw));
+    const p4Conf = dipAvg > 40 ? 'MED' : 'LOW';
+    const p4Label = p4 >= 75 ? 'HAMPIR PASTI' : p4 >= 55 ? 'TINGGI'
+        : p4 >= 35 ? 'MUNGKIN' : p4 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
+
+    return [
+        {
+            label: 'Eskalasi militer kinetik dalam 72 jam',
+            pct: p1,
+            levelLabel: p1Label,
+            conf: p1Conf,
+            confClass: p1Conf.toLowerCase()
+        },
+        {
+            label: 'Harga Brent melampaui USD 105/barel minggu ini',
+            pct: p2,
+            levelLabel: p2Label,
+            conf: p2Conf,
+            confClass: p2Conf.toLowerCase()
+        },
+        {
+            label: 'IAEA rilis laporan temuan nuklir baru &lt;7 hari',
+            pct: p3,
+            levelLabel: p3Label,
+            conf: p3Conf,
+            confClass: p3Conf.toLowerCase()
+        },
+        {
+            label: 'Terobosan negosiasi back-channel Qatar/Oman &lt;14 hari',
+            pct: p4,
+            levelLabel: p4Label,
+            conf: p4Conf,
+            confClass: p4Conf.toLowerCase()
+        },
+    ];
+}
+
 function renderSIGINT() {
-    const base = Math.min(98, Math.round(70 + refreshCount * 1.5 + Math.random() * 6));
+    const base = computeFusionScore();
     document.getElementById('fusion-score-val').textContent = base;
     document.getElementById('source-grid').innerHTML = SIGINT_SOURCES.map(s => {
         const str = Math.min(100, s.strength + Math.round((Math.random() - .4) * 8));
@@ -654,11 +1281,18 @@ function renderSIGINT() {
     }).join('');
     const anomalies = SIGINT_SOURCES.filter(s => s.anomaly);
     document.getElementById('anomaly-list').innerHTML = anomalies.length ? anomalies.map(s => `<div class="anomaly-item"><span class="anom-src">⚠ ${s.name}</span><br>Sinyal anomali — output berbeda dari konsensus tier-1. Perlu cross-validation manual.</div>`).join('') : '<div style="color:var(--text-dim);font-size:11px">Tidak ada anomali terdeteksi.</div>';
-    document.getElementById('predictive-list').innerHTML = `
-    <div class="pred-item"><div class="pred-label">Eskalasi militer dalam 72 jam</div><div class="pred-conf low">RENDAH — 18% (Conf: LOW)</div></div>
-    <div class="pred-item"><div class="pred-label">Harga minyak > $105 minggu ini</div><div class="pred-conf high">TINGGI — 74% (Conf: HIGH)</div></div>
-    <div class="pred-item"><div class="pred-label">IAEA laporan tambahan &lt;7 hari</div><div class="pred-conf high">HAMPIR PASTI — 91% (Conf: HIGH)</div></div>
-    <div class="pred-item"><div class="pred-label">Terobosan diplomasi Qatar &lt;14 hari</div><div class="pred-conf med">MUNGKIN — 38% (Conf: MED)</div></div>`;
+
+    const predictions = computePredictiveAnalytics();
+    const predEl = document.getElementById('predictive-list');
+    if (predEl) {
+        predEl.innerHTML = predictions.map(p => `
+            <div class="pred-item">
+                <div class="pred-label">${p.label}</div>
+                <div class="pred-conf ${p.confClass}">
+                    ${p.levelLabel} — ${p.pct}% (Conf: ${p.conf})
+                </div>
+            </div>`).join('');
+    }
 }
 
 // ===== CUSTOM SVG TACTICAL MAP (100% OFFLINE) =====
@@ -800,8 +1434,8 @@ function initMap() {
     }).bindTooltip(routeHtml, { permanent: true, direction: 'center', className: 'route-label' }).addTo(leafletMap);
 }
 
-function toggleLayer(cat) {
-    const btn = event.currentTarget;
+function toggleLayer(cat, el) {
+    const btn = el;
     const isActive = btn.classList.contains('active');
 
     if (!leafletMap || !mapLayerGroups[cat]) return;

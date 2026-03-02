@@ -143,6 +143,9 @@
         <button class="btn-refresh" id="refresh-btn" onclick="triggerRefresh()">
           <span class="btn-icon">↻</span> REFRESH SEKARANG
         </button>
+        <button id="snapshot-btn" class="btn-snapshot" onclick="saveSnapshot()">
+          ◉ SIMPAN SNAPSHOT
+        </button>
       </section>
 
       <!-- I&W Warning Count -->
@@ -176,6 +179,32 @@
         <div id="delta-list"></div>
       </section>
 
+      <!-- Intelligence Gap Tracker -->
+      <section class="card gap-card">
+        <div class="card-title">
+          <span class="icon-hex">◈</span> INTELLIGENCE GAPS
+          <span class="gap-summary-badge" id="gap-summary-badge">
+            7 OPEN · 0 PARTIAL · 0 CLOSED
+          </span>
+        </div>
+        <div class="gap-instruction">
+          Klik item untuk siklus status: OPEN → PARTIAL → CLOSED
+        </div>
+        <div id="gap-list"></div>
+      </section>
+
+      <!-- Key Assumptions Checker -->
+      <section class="card assumptions-card">
+        <div class="card-title">
+          <span class="icon-hex">◈</span> KEY ASSUMPTIONS
+          <span class="assumptions-badge" id="assumptions-violated-count">SEMUA AKTIF</span>
+        </div>
+        <div class="assumptions-disclaimer">
+          Toggle OFF = asumsi dilanggar. Probabilitas otomatis direcalkulasi.
+        </div>
+        <div id="assumptions-list"></div>
+      </section>
+
       <!-- Analyst Summary -->
       <section class="card analyst-card">
         <div class="card-title"><span class="icon-hex">◈</span> RINGKASAN ANALIS</div>
@@ -183,6 +212,17 @@
         <div class="analyst-footer">
           <span class="ai-badge">⚡ Multi-Method AI Analysis</span>
           <span id="analysis-time">--:--</span>
+        </div>
+      </section>
+
+      <!-- Snapshot History Panel -->
+      <section class="card snapshot-card">
+        <div class="card-title">
+          <span class="icon-hex">◈</span> SNAPSHOT HISTORY
+          <span class="snap-count-badge" id="snap-count">0 / 5</span>
+        </div>
+        <div id="snapshot-list">
+          <div class="snap-empty">Belum ada snapshot tersimpan.</div>
         </div>
       </section>
 
@@ -204,11 +244,11 @@
         </div>
         <div id="satellite-map"></div>
         <div class="map-layer-controls">
-          <button class="layer-btn active" onclick="toggleLayer('naval')">⚓ Naval Forces</button>
-          <button class="layer-btn active" onclick="toggleLayer('airbase')">✈️ Air Bases</button>
-          <button class="layer-btn active" onclick="toggleLayer('missile')">🚀 Missile Sites</button>
-          <button class="layer-btn active" onclick="toggleLayer('proxy')">⬡ Proxy Forces</button>
-          <button class="layer-btn active" onclick="toggleLayer('nuclear')">☢️ Nuclear Sites</button>
+          <button class="layer-btn active" onclick="toggleLayer('naval', this)">⚓ Naval Forces</button>
+          <button class="layer-btn active" onclick="toggleLayer('airbase', this)">✈️ Air Bases</button>
+          <button class="layer-btn active" onclick="toggleLayer('missile', this)">🚀 Missile Sites</button>
+          <button class="layer-btn active" onclick="toggleLayer('proxy', this)">⬡ Proxy Forces</button>
+          <button class="layer-btn active" onclick="toggleLayer('nuclear', this)">☢️ Nuclear Sites</button>
         </div>
       </div>
 
@@ -222,6 +262,11 @@
             <span class="cl-badge low">LOW</span>
             <span class="cl-badge spec">SPEKULATIF</span>
             <span style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);">= CONFIDENCE LEVEL</span>
+          </div>
+          <div class="dst-legend">
+            DST: <span class="dst-leg-item">Bel</span> = batas bawah bukti &nbsp;|&nbsp;
+            <span class="dst-leg-item">Pl</span> = batas atas &nbsp;|&nbsp;
+            <span class="dst-leg-unc">?</span> = ketidakpastian epistemik
           </div>
         </div>
         <div class="scenario-group">
@@ -280,10 +325,10 @@
           <h2 class="tab-title">♟️ RED TEAM &amp; WARGAMING — GAME THEORY</h2>
           <div class="rt-perspective-nav">
             <span class="rt-label">PERSPEKTIF:</span>
-            <button class="pv-btn active" onclick="setPerspective('iran')">🇮🇷 IRAN</button>
-            <button class="pv-btn" onclick="setPerspective('israel')">🇮🇱 ISRAEL</button>
-            <button class="pv-btn" onclick="setPerspective('us')">🇺🇸 AS</button>
-            <button class="pv-btn" onclick="setPerspective('china')">🇨🇳 CHINA</button>
+            <button class="pv-btn active" onclick="setPerspective('iran', this)">🇮🇷 IRAN</button>
+            <button class="pv-btn" onclick="setPerspective('israel', this)">🇮🇱 ISRAEL</button>
+            <button class="pv-btn" onclick="setPerspective('us', this)">🇺🇸 AS</button>
+            <button class="pv-btn" onclick="setPerspective('china', this)">🇨🇳 CHINA</button>
           </div>
         </div>
         <div class="redteam-layout">
