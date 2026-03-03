@@ -2,10 +2,46 @@
 // ===== STATE =====
 let scenarios = (typeof SCENARIOS !== 'undefined') ? SCENARIOS.map(s => ({ ...s })) : [];
 let currentThreatLevel = 4, refreshCount = 0, countdownSeconds = 300;
-let countdownTimer = null, isLoading = false, leafletMap = null;
-let mapLayers = {}, radarChart = null, currentPerspective = 'iran';
+let countdownTimer = null, isLoading = false;
+let radarChart = null, currentPerspective = 'iran';
 let activeFeedFilter = 'all', credFilterOn = false, uvVisible = false;
 let lastRedPhoneTime = 0;
+
+// Panel collapse state
+const PANEL_STATES = {
+    'gap-card': { collapsed: false },
+    'assumptions-card': { collapsed: false },
+    'snapshot-card': { collapsed: true }
+};
+
+function togglePanel(cardId) {
+    const state = PANEL_STATES[cardId];
+    if (!state) return;
+    state.collapsed = !state.collapsed;
+    const content = document.getElementById(cardId + '-content');
+    const chevron = document.getElementById(cardId + '-chevron');
+    if (content) {
+        content.style.maxHeight = state.collapsed ? '0px' : '2000px';
+        content.style.overflow = state.collapsed ? 'hidden' : 'visible';
+        content.style.transition = 'max-height 0.3s ease';
+        content.style.marginTop = state.collapsed ? '0' : '';
+    }
+    if (chevron) chevron.textContent = state.collapsed ? '▶' : '▼';
+}
+
+function initPanelStates() {
+    Object.keys(PANEL_STATES).forEach(cardId => {
+        if (PANEL_STATES[cardId].collapsed) {
+            const content = document.getElementById(cardId + '-content');
+            const chevron = document.getElementById(cardId + '-chevron');
+            if (content) {
+                content.style.maxHeight = '0px';
+                content.style.overflow = 'hidden';
+            }
+            if (chevron) chevron.textContent = '▶';
+        }
+    });
+}
 
 // Timers for memory management
 let masterClockTimer = null;
@@ -56,6 +92,26 @@ async function runBootSequence() {
 
     // Now run normal init safely
     try { initTabs(); } catch (e) { }
+    try {
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            switch (e.key.toUpperCase()) {
+                case 'R': if (!isLoading) triggerRefresh(); break;
+                case 'S': saveSnapshot(); break;
+                case 'A': togglePanel('assumptions-card'); break;
+                case 'G': togglePanel('gap-card'); break;
+                case 'H': togglePanel('snapshot-card'); break;
+                case 'ESCAPE': acknowledgeRedPhone(); break;
+                default:
+                    const n = parseInt(e.key);
+                    if (n >= 1 && n <= 9) {
+                        const tabs = document.querySelectorAll('.tab-btn');
+                        if (tabs[n - 1]) tabs[n - 1].click();
+                    }
+            }
+        });
+        initPanelStates();
+    } catch (e) { }
     try {
         updateClock();
         if (masterClockTimer) clearInterval(masterClockTimer);
@@ -142,16 +198,14 @@ function hideLoadingOverlay() {
 
 // ===== TABS =====
 function initTabs() {
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById(btn.dataset.tab).classList.add('active');
-            if (btn.dataset.tab === 'tab-map' && leafletMap) setTimeout(() => leafletMap.invalidateSize(), 120);
-            if (btn.dataset.tab === 'tab-netassess' && radarChart) radarChart.update();
+    // Accordion interaction is natively supported by <details>.
+    // This is a stub for potential future tab re-integration or resize triggers.
+    const radar = document.getElementById('acc-netassess');
+    if (radar) {
+        radar.addEventListener('toggle', (e) => {
+            if (e.target.open && radarChart) setTimeout(() => radarChart.update(), 120);
         });
-    });
+    }
 }
 
 // ===== CLOCK =====
@@ -340,15 +394,25 @@ function updateThreatLevel() {
         return s ? s.current : 0;
     };
 
-    // Scale weighted average to approach 100 for proper boundary conditions
-    // Boundary conditions tested: 79 -> 80 = TINGGI -> KRITIS
-    const scoreSum = f('S4') * 0.30 + f('S5') * 0.25 + f('S7') * 0.25 + f('S8') * 0.20;
     const iwT = IW_INDICATORS.filter(i => i.status === 'triggered').length;
+    const iwW = IW_INDICATORS.filter(i => i.status === 'watch').length;
 
-    // Formula verification: scale limits cleanly
-    const sc = Math.min(100, Math.round((scoreSum * 1.5) + (iwT * 2.5)));
+    // Cluster 1: Military kinetic scenarios
+    const milScore = f('S4') * 0.35 + f('S5') * 0.30 + f('S7') * 0.20 + f('S6') * 0.15;
 
-    // Boundary enforcement
+    // Cluster 2: Nuclear/extreme scenarios — S12 now contributes to threat level
+    const nucScore = f('S12') * 0.50 + f('S3') * 0.30 + f('S11') * 0.20;
+
+    // Cluster 3: Economic pressure scenarios
+    const econScore = f('S9') * 0.50 + f('S8') * 0.30 + f('S10') * 0.20;
+
+    // Composite: military 45%, nuclear 35%, economic 20%
+    const composite = milScore * 0.45 + nucScore * 0.35 + econScore * 0.20;
+
+    const sc = Math.min(100, Math.round(
+        composite * 1.3 + iwT * 2.0 + iwW * 0.6
+    ));
+
     currentThreatLevel = sc >= 80 ? 4 : sc >= 60 ? 3 : sc >= 40 ? 2 : sc >= 20 ? 1 : 0;
 }
 
@@ -650,18 +714,27 @@ function computeDST(scenario) {
     // --- Belief factor ---
     let beliefFactor = 0.70;
 
-    // ACH contribution: find best matching hypothesis for this scenario
-    // Use ACH_MATRIX from app.js — find hypothesis with fewest inconsistencies
-    // that is thematically related (simplification: use scenario index parity)
+    // ACH contribution: corroborating evidence ratio per scenario group
+    // Each scenario group maps to thematically relevant ACH hypotheses
     try {
-        const achRows = Object.values(ACH_MATRIX);
-        const scenIndex = scenarios.indexOf(scenario);
-        const relRow = achRows[scenIndex % achRows.length];
-        if (relRow) {
-            const inconsistencies = relRow.filter(v => v === -1 || v === -2).length;
-            if (inconsistencies === 0) beliefFactor += 0.05;
-            else if (inconsistencies >= 3) beliefFactor -= 0.03;
-        }
+        const groupACHmap = {
+            diplomasi: [0, 2],   // H1 (Strategic Patience), H3 (Status Quo)
+            militer: [1, 4],   // H2 (Pre-emptive Strike), H5 (Multi-Front)
+            ekonomi: [2, 3],   // H3 (Status Quo), H4 (Breakout)
+            ekstrem: [3, 5]    // H4 (Nuclear Breakout), H6 (US Strike)
+        };
+        const relHypIndices = groupACHmap[scenario.group] || [0, 1];
+        let corrobC = 0, totalCells = 0;
+        ACH_EVIDENCE.forEach(ev => {
+            relHypIndices.forEach(hi => {
+                totalCells++;
+                if (ev.cells[hi] === 'C') corrobC++;
+            });
+        });
+        const corrobRatio = totalCells > 0 ? corrobC / totalCells : 0.5;
+        // corrobRatio > 0.6 = strong evidence → higher belief
+        // corrobRatio < 0.3 = weak evidence → lower belief
+        beliefFactor += (corrobRatio - 0.5) * 0.20;
     } catch (e) { }
 
     // I&W contribution: triggered indicators in same group boost belief
@@ -740,46 +813,52 @@ function computeDST(scenario) {
 // ===== SCENARIOS =====
 const GRP = { diplomasi: 'group-diplomasi', militer: 'group-militer', ekonomi: 'group-ekonomi', ekstrem: 'group-ekstrem' };
 function renderScenarios() {
-    Object.values(GRP).forEach(id => document.getElementById(id).innerHTML = '');
+    Object.values(GRP).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '';
+    });
+
+    const topScenariosEl = document.getElementById('top-scenarios-list');
+    if (topScenariosEl) topScenariosEl.innerHTML = '';
+
+    const top3Ids = [...scenarios].sort((a, b) => b.current - a.current).slice(0, 3).map(s => s.id);
+
     scenarios.forEach(s => {
-        const el = document.getElementById(GRP[s.group]); if (!el) return;
+        const el = document.getElementById(GRP[s.group]);
+
         const delta = s.current - s.baseline;
         const ds = delta === 0 ? '±0%' : delta > 0 ? `+${delta}%` : `${delta}%`;
         const dc = delta > 0 ? 'pos' : delta < 0 ? 'neg' : 'neutral';
-        const pc = s.group === 'militer' ? (s.current > 40 ? 'var(--accent-red)' : 'var(--accent-orange)') : s.group === 'ekonomi' ? 'var(--accent-yellow)' : s.group === 'ekstrem' ? 'var(--accent-purple)' : 'var(--accent-cyan)';
+        const pc = s.group === 'militer' ? 'var(--accent-red)' : s.group === 'ekonomi' ? 'var(--accent-yellow)' : s.group === 'ekstrem' ? 'var(--accent-purple)' : 'var(--accent-cyan)';
         const conf = computeConf(s);
         const tags = s.tags.map(t => `<span class="tag ${t === 'de-eskalasi' ? 'deeskalasi' : t}">${t.toUpperCase()}</span>`).join('');
-        el.insertAdjacentHTML('beforeend', `<div class="scenario-item">
-      <div class="scenario-header">
-        <div class="scenario-name">${esc(s.name)}</div>
-        <div class="scenario-prob" style="color:${pc}">${s.current}%
-            ${buildSparkline(s.id)}
-        </div>
-        <div class="scenario-delta ${dc}">${ds}</div>
-      </div>
-      </div>
-      <div class="bar-container">
-        <div class="bar-baseline" style="width:${s.baseline}%"></div>
-        <div class="bar-current ${s.barClass}" style="width:${s.current}%"></div>
-      </div>
-      ${(() => {
-                const dst = computeDST(s);
-                const uClass = dst.uncertainty > 25 ? 'dst-high-unc'
-                    : dst.uncertainty > 12 ? 'dst-med-unc' : 'dst-low-unc';
-                return `<div class="dst-row">
-            <span class="dst-label">Bel</span>
-            <span class="dst-val">${dst.belief}%</span>
-            <span class="dst-sep">|</span>
-            <span class="dst-label">Pl</span>
-            <span class="dst-val">${dst.plausibility}%</span>
-            <span class="dst-sep">|</span>
-            <span class="dst-label dst-unc ${uClass}">?</span>
-            <span class="dst-val ${uClass}">${dst.uncertainty}%</span>
+
+        const dst = computeDST(s);
+        const uClass = dst.uncertainty > 25 ? 'dst-high-unc' : dst.uncertainty > 12 ? 'dst-med-unc' : 'dst-low-unc';
+
+        const html = `<div class="scenario-item">
+            <div class="scenario-header">
+                <div class="scenario-name">${esc(s.name)}</div>
+                <div class="scenario-prob" style="color:${pc}">${s.current}%
+                    ${buildSparkline(s.id)}
+                </div>
+                <div class="scenario-delta ${dc}">${ds}</div>
+            </div>
+            <div class="bar-container">
+                <div class="bar-baseline" style="width:${s.baseline}%"></div>
+                <div class="bar-current ${s.barClass}" style="width:${s.current}%"></div>
+            </div>
+            <div class="dst-row">
+                <span class="dst-label">Bel</span><span class="dst-val">${dst.belief}%</span><span class="dst-sep">|</span>
+                <span class="dst-label">Pl</span><span class="dst-val">${dst.plausibility}%</span><span class="dst-sep">|</span>
+                <span class="dst-label dst-unc ${uClass}">?</span><span class="dst-val ${uClass}">${dst.uncertainty}%</span>
+            </div>
+            <div class="scenario-footer">${tags}<span class="conf-badge ${conf}">${CLBL[conf]}</span></div>
+            ${s.challenge ? `<button class="btn-challenge" onclick="toggleChallenge('${s.id}')">⚡ CHALLENGE THIS ANALYSIS <span style="float:right;font-size:8px;opacity:0.5">(DEVIL'S ADVOCATE)</span></button><div class="challenge-box" id="cb-${s.id}"><div class="cb-label">ACH HIGHLIGHT <span>(AI Red Team)</span></div>${esc(s.challenge)}</div>` : ''}
         </div>`;
-            })()}
-      <div class="scenario-footer">${tags}<span class="conf-badge ${conf}">${CLBL[conf]}</span></div>
-      ${s.challenge ? `<button class="btn-challenge" onclick="toggleChallenge('${s.id}')">⚡ CHALLENGE THIS ANALYSIS <span style="float:right;font-size:8px;opacity:0.5">(DEVIL'S ADVOCATE)</span></button><div class="challenge-box" id="cb-${s.id}"><div class="cb-label">ACH HIGHLIGHT <span>(AI Red Team)</span></div>${esc(s.challenge)}</div>` : ''}
-    </div>`);
+
+        if (el) el.insertAdjacentHTML('beforeend', html);
+        if (topScenariosEl && top3Ids.includes(s.id)) topScenariosEl.insertAdjacentHTML('beforeend', html);
     });
 }
 
@@ -1182,6 +1261,19 @@ function computeFusionScore() {
     ));
 }
 
+function computePredInterval(pct, nActiveIndicators) {
+    // 95% confidence interval based on active corroborating indicators
+    // More confirmed I&W = narrower interval (more certainty)
+    const p = Math.max(0.02, Math.min(0.97, pct / 100));
+    const n = Math.max(1, nActiveIndicators);
+    const marginPct = Math.round(196 * Math.sqrt(p * (1 - p) / n));
+    return {
+        lo: Math.max(2, pct - marginPct),
+        hi: Math.min(97, pct + marginPct),
+        margin: marginPct
+    };
+}
+
 function computePredictiveAnalytics() {
     // --- Helper: get current scenario probability by ID ---
     const sc = id => {
@@ -1234,31 +1326,42 @@ function computePredictiveAnalytics() {
     const p4Label = p4 >= 75 ? 'HAMPIR PASTI' : p4 >= 55 ? 'TINGGI'
         : p4 >= 35 ? 'MUNGKIN' : p4 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
 
+    // n-indicators: count relevant active I&W per prediction
+    const iwMil = IW_INDICATORS.filter(i => ['CR-001', 'CR-002', 'CR-003', 'CR-005'].includes(i.cr) && i.status !== 'clear').length;
+    const iwEcon = IW_INDICATORS.filter(i => ['CR-009', 'CR-010', 'CR-012'].includes(i.cr) && i.status !== 'clear').length;
+    const iwNuke = IW_INDICATORS.filter(i => ['CR-007', 'CR-013', 'CR-014'].includes(i.cr) && i.status !== 'clear').length;
+    const iwDip = IW_INDICATORS.filter(i => ['CR-006', 'CR-008'].includes(i.cr) && i.status !== 'clear').length;
+
+    const int1 = computePredInterval(p1, iwMil);
+    const int2 = computePredInterval(p2, iwEcon);
+    const int3 = computePredInterval(p3, iwNuke);
+    const int4 = computePredInterval(p4, Math.max(1, iwDip));
+
     return [
         {
             label: 'Eskalasi militer kinetik dalam 72 jam',
-            pct: p1,
+            pct: p1, lo: int1.lo, hi: int1.hi,
             levelLabel: p1Label,
             conf: p1Conf,
             confClass: p1Conf.toLowerCase()
         },
         {
             label: 'Harga Brent melampaui USD 105/barel minggu ini',
-            pct: p2,
+            pct: p2, lo: int2.lo, hi: int2.hi,
             levelLabel: p2Label,
             conf: p2Conf,
             confClass: p2Conf.toLowerCase()
         },
         {
             label: 'IAEA rilis laporan temuan nuklir baru &lt;7 hari',
-            pct: p3,
+            pct: p3, lo: int3.lo, hi: int3.hi,
             levelLabel: p3Label,
             conf: p3Conf,
             confClass: p3Conf.toLowerCase()
         },
         {
             label: 'Terobosan negosiasi back-channel Qatar/Oman &lt;14 hari',
-            pct: p4,
+            pct: p4, lo: int4.lo, hi: int4.hi,
             levelLabel: p4Label,
             conf: p4Conf,
             confClass: p4Conf.toLowerCase()
@@ -1289,165 +1392,18 @@ function renderSIGINT() {
             <div class="pred-item">
                 <div class="pred-label">${p.label}</div>
                 <div class="pred-conf ${p.confClass}">
-                    ${p.levelLabel} — ${p.pct}% (Conf: ${p.conf})
+                    ${p.levelLabel} — ${p.pct}%
+                    <span style="font-size:8px;opacity:0.7;margin-left:4px">
+                        [${p.lo}%–${p.hi}%]
+                    </span>
+                    (Conf: ${p.conf})
                 </div>
             </div>`).join('');
     }
 }
 
 // ===== CUSTOM SVG TACTICAL MAP (100% OFFLINE) =====
-// ===== REAL SATELLITE TACTICAL MAP (LEAFLET) =====
-const MAP_LOCATIONS = [
-    { lat: 32.1, lon: 34.8, label: 'TEL AVIV', sub: 'IDF HQ', color: '#3399ff', cat: 'airbase', r: 7 },
-    { lat: 35.7, lon: 51.4, label: 'TEHRAN', sub: 'IRGC HQ / 84%', color: '#cc2244', cat: 'missile', r: 9 },
-    { lat: 32.9, lon: 44.4, label: 'BAGHDAD', sub: 'PMF', color: '#ff8c00', cat: 'proxy', r: 6 },
-    { lat: 27.2, lon: 56.3, label: 'HORMUZ', sub: 'Task Force 50', color: '#ffd700', cat: 'naval', r: 8 },
-    { lat: 33.9, lon: 35.5, label: 'BEIRUT', sub: 'Hezbollah', color: '#ff3355', cat: 'proxy', r: 6 },
-    { lat: 15.4, lon: 44.2, label: "SANAA", sub: 'Houthi', color: '#ff8c00', cat: 'proxy', r: 6 },
-    { lat: 31.5, lon: 34.5, label: 'GAZA', sub: 'Fasa 2', color: '#ff1744', cat: 'proxy', r: 5 },
-    { lat: 24.7, lon: 46.7, label: 'RIYADH', sub: 'OPEC+', color: '#00e676', cat: 'naval', r: 6 },
-    { lat: 33.1, lon: 44.3, label: 'FORDOW', sub: '☢ 84% Enrichment', color: '#b966ff', cat: 'nuclear', r: 8 },
-    { lat: 36.9, lon: 35.5, label: 'INCIRLIK', sub: 'NATO AB', color: '#00d4ff', cat: 'airbase', r: 5 },
-    { lat: 26.0, lon: 50.5, label: 'BAHRAIN', sub: 'US NAVCENT', color: '#00d4ff', cat: 'naval', r: 6 },
-];
-
-let mapLayerGroups = {};
-
-function initMap() {
-    if (leafletMap || typeof L === 'undefined') return;
-
-    // Reset container to accept Leaflet
-    const container = document.getElementById('satellite-map');
-    container.innerHTML = '';
-
-    // Default view zoomed out on Middle East
-    leafletMap = L.map('satellite-map', {
-        zoomControl: false,
-        attributionControl: false
-    }).setView([30.0, 48.0], 4.5);
-
-    // Realistic Esri Satellite Layer (Highly detailed Google-Earth like)
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 18,
-    }).addTo(leafletMap);
-
-    // Initialize layer groups for categories
-    const categories = ['naval', 'airbase', 'missile', 'proxy', 'nuclear'];
-    categories.forEach(cat => {
-        mapLayerGroups[cat] = L.layerGroup().addTo(leafletMap);
-    });
-
-    // Add Custom Dark Overlay to dim the satellite map slightly for tactical feel
-    const overlay = L.rectangle([[-90, -180], [90, 180]], {
-        color: '#06101a',
-        fillColor: '#06101a',
-        fillOpacity: 0.35,
-        weight: 0,
-        interactive: false
-    }).addTo(leafletMap);
-
-    // Add Markers
-    MAP_LOCATIONS.forEach(loc => {
-        const marker = L.circleMarker([loc.lat, loc.lon], {
-            radius: loc.r,
-            fillColor: loc.color,
-            color: '#fff',
-            weight: 1.5,
-            opacity: 0.8,
-            fillOpacity: 0.7
-        });
-
-        // Add glow effect using a second larger circle
-        const glow = L.circleMarker([loc.lat, loc.lon], {
-            radius: loc.r + 8,
-            fillColor: loc.color,
-            color: 'transparent',
-            fillOpacity: 0.2,
-            className: 'pulse-marker-svg'
-        });
-
-        const tooltipContent = `<div style="font-family:'Share Tech Mono';text-align:center;">
-            <div style="color:${loc.color};font-weight:bold;font-size:12px;margin-bottom:2px;text-shadow:0 0 5px #000;">${loc.label}</div>
-            <div style="color:#e0e0e0;font-size:10px;text-shadow:0 0 5px #000;">${loc.sub}</div>
-        </div>`;
-
-        marker.bindTooltip(tooltipContent, {
-            permanent: true,
-            direction: 'right',
-            className: 'custom-map-tooltip',
-            offset: [loc.r + 5, 0]
-        });
-
-        // Add both to the category layer group
-        glow.addTo(mapLayerGroups[loc.cat]);
-        marker.addTo(mapLayerGroups[loc.cat]);
-    });
-
-    // Add CSS for custom tooltip to remove default white background
-    if (!document.getElementById('leaflet-custom-styles')) {
-        const style = document.createElement('style');
-        style.id = 'leaflet-custom-styles';
-        style.innerHTML = `
-            .custom-map-tooltip {
-                background: rgba(10, 20, 30, 0.7) !important;
-                border: 1px solid rgba(255, 255, 255, 0.15) !important;
-                box-shadow: 0 0 10px rgba(0,0,0,0.8) !important;
-                border-radius: 4px !important;
-                padding: 4px 8px !important;
-                backdrop-filter: blur(4px);
-            }
-            .leaflet-tooltip-right.custom-map-tooltip::before {
-                border-right-color: rgba(10, 20, 30, 0.85) !important;
-            }
-            .route-label {
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-                color: #00d4ff !important;
-                font-family: 'Share Tech Mono' !important;
-                font-size: 10px !important;
-                font-weight: bold !important;
-                text-shadow: 0 0 4px #000 !important;
-            }
-            .leaflet-tooltip.route-label::before { display: none; }
-            .pulse-marker-svg {
-                transform-origin: center;
-                animation: svgPulse 2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
-            }
-            @keyframes svgPulse {
-                0% { opacity: 0.8; stroke-width: 10px; stroke: currentColor; }
-                100% { opacity: 0; stroke-width: 40px; stroke: currentColor; }
-            }
-        `;
-        document.head.appendChild(style);
-    }
-
-    // Add USS Nimitz Route
-    const routeHtml = `USS NIMITZ CBG`;
-    const routeLine = L.polyline([
-        [24, 58.5], [26, 57.2], [27.2, 56.3]
-    ], {
-        color: '#00d4ff',
-        weight: 2,
-        dashArray: '6, 6',
-        opacity: 0.9
-    }).bindTooltip(routeHtml, { permanent: true, direction: 'center', className: 'route-label' }).addTo(leafletMap);
-}
-
-function toggleLayer(cat, el) {
-    const btn = el;
-    const isActive = btn.classList.contains('active');
-
-    if (!leafletMap || !mapLayerGroups[cat]) return;
-
-    if (isActive) {
-        btn.classList.remove('active');
-        leafletMap.removeLayer(mapLayerGroups[cat]);
-    } else {
-        btn.classList.add('active');
-        leafletMap.addLayer(mapLayerGroups[cat]);
-    }
-}
+// Logic peta dan layer control (initMap, toggleLayer) sekarang ditangani secara eksekutif di map.js
 
 // ===== CHRONOLOGY OF ESCALATION =====
 function renderChronology() {
@@ -1477,4 +1433,234 @@ function toggleChallenge(id) {
 // ===== RED PHONE ALERTS =====
 function acknowledgeRedPhone() {
     document.getElementById('red-phone-modal').classList.add('hidden');
+}
+
+// ===== PDF EXPORT =====
+function generatePDFReport() {
+    if (typeof window.jspdf === 'undefined') {
+        alert('jsPDF belum dimuat. Coba refresh halaman terlebih dahulu.');
+        return;
+    }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+    const now = new Date();
+    const wib = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 7 * 3600000);
+    const p = n => String(n).padStart(2, '0');
+    const timestamp = `${p(wib.getDate())} Mar ${wib.getFullYear()} — ${p(wib.getHours())}:${p(wib.getMinutes())} WIB`;
+    const dateSlug = `${wib.getFullYear()}${p(wib.getMonth() + 1)}${p(wib.getDate())}_${p(wib.getHours())}${p(wib.getMinutes())}`;
+    const threatLabels = ['RENDAH', 'SEDANG', 'WASPADA', 'TINGGI', 'KRITIS'];
+    const threatColors = {
+        0: [0, 230, 118], 1: [105, 240, 174], 2: [255, 215, 0],
+        3: [255, 110, 64], 4: [255, 23, 68]
+    };
+
+    // ── PAGE BACKGROUND ──
+    doc.setFillColor(6, 10, 15);
+    doc.rect(0, 0, 210, 297, 'F');
+
+    // ── HEADER BAR ──
+    doc.setFillColor(10, 20, 35);
+    doc.rect(0, 0, 210, 22, 'F');
+    doc.setDrawColor(0, 212, 255);
+    doc.setLineWidth(0.3);
+    doc.line(0, 22, 210, 22);
+
+    doc.setTextColor(0, 212, 255);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('INTEL DASHBOARD v3.0', 10, 10);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(106, 143, 168);
+    doc.text('BRIEFING REPORT — KONFLIK IRAN-ISRAEL-AS', 10, 16);
+    doc.setTextColor(100, 130, 150);
+    doc.text(timestamp, 210 - 10, 10, { align: 'right' });
+    doc.text('CLASSIFIED — INTERNAL USE ONLY', 210 - 10, 16, { align: 'right' });
+
+    // ── THREAT LEVEL BLOCK ──
+    const tl = currentThreatLevel;
+    const tlLabel = threatLabels[tl] || 'UNKNOWN';
+    const tlColor = threatColors[tl] || [200, 200, 200];
+    doc.setFillColor(15, 25, 40);
+    doc.rect(8, 28, 92, 24, 'F');
+    doc.setDrawColor(...tlColor);
+    doc.setLineWidth(0.6);
+    doc.rect(8, 28, 92, 24);
+    doc.setTextColor(130, 160, 180);
+    doc.setFontSize(8);
+    doc.text('LEVEL ANCAMAN', 14, 35);
+    doc.setTextColor(...tlColor);
+    doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
+    doc.text(tlLabel, 14, 48);
+
+    // ── I&W STATUS BLOCK ──
+    const iwT = IW_INDICATORS.filter(i => i.status === 'triggered').length;
+    const iwW = IW_INDICATORS.filter(i => i.status === 'watch').length;
+    const iwC = IW_INDICATORS.filter(i => i.status === 'clear').length;
+    doc.setFillColor(15, 25, 40);
+    doc.rect(106, 28, 96, 24, 'F');
+    doc.setDrawColor(40, 60, 85);
+    doc.setLineWidth(0.4);
+    doc.rect(106, 28, 96, 24);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(130, 160, 180);
+    doc.setFontSize(8);
+    doc.text('I&W MATRIX STATUS', 112, 35);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 80, 100);
+    doc.text(`${iwT} TRIGGERED`, 112, 47);
+    doc.setTextColor(255, 225, 50);
+    doc.text(`${iwW} WATCH`, 147, 47);
+    doc.setTextColor(0, 240, 128);
+    doc.text(`${iwC} CLEAR`, 174, 47);
+
+    // ── SECTION: TOP SCENARIOS ──
+    doc.setDrawColor(26, 45, 69);
+    doc.setLineWidth(0.2);
+    doc.line(8, 56, 202, 56);
+    doc.setTextColor(0, 212, 255);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('PROBABILITAS SKENARIO — TOP 8', 8, 63);
+
+    const top8 = [...scenarios].sort((a, b) => b.current - a.current).slice(0, 8);
+    const groupColor = {
+        militer: [255, 80, 100],
+        diplomasi: [0, 230, 255],
+        ekonomi: [255, 225, 50],
+        ekstrem: [200, 130, 255]
+    };
+
+    top8.forEach((s, i) => {
+        const col = i < 4 ? 8 : 108;
+        const row = (i % 4);
+        const y = 72 + row * 16;
+        const gc = groupColor[s.group] || [200, 200, 200];
+
+        // bar background
+        doc.setFillColor(15, 25, 40);
+        doc.rect(col, y - 5, 96, 14, 'F');
+        doc.setDrawColor(40, 60, 85);
+        doc.setLineWidth(0.3);
+        doc.rect(col, y - 5, 96, 14);
+
+        // probability fill bar
+        const barW = Math.round((s.current / 100) * 72);
+        doc.setFillColor(...gc, 0.6);
+        doc.setFillColor(gc[0], gc[1], gc[2]);
+        doc.setGState(doc.GState({ opacity: 0.25 }));
+        doc.rect(col + 2, y - 3, barW, 9, 'F');
+        doc.setGState(doc.GState({ opacity: 1 }));
+
+        // text
+        doc.setTextColor(220, 240, 255);
+        doc.setFontSize(7.5);
+        doc.setFont('helvetica', 'normal');
+        const nameClipped = s.name.length > 38 ? s.name.substring(0, 36) + '…' : s.name;
+        doc.text(nameClipped, col + 4, y + 3);
+        doc.setTextColor(...gc);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${s.current}%`, col + 88, y + 4, { align: 'right' });
+    });
+
+    // ── SECTION: ASSUMPTION VIOLATIONS ──
+    const violated = (typeof KEY_ASSUMPTIONS !== 'undefined')
+        ? KEY_ASSUMPTIONS.filter(k => !k.active) : [];
+    const openGaps = (typeof INTEL_GAPS !== 'undefined')
+        ? INTEL_GAPS.filter(g => g.status === 'OPEN') : [];
+
+    doc.line(8, 138, 202, 138);
+    doc.setTextColor(255, 225, 50);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`KEY ASSUMPTIONS — ${violated.length > 0 ? violated.length + ' DILANGGAR' : 'SEMUA AKTIF'}`, 8, 145);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    if (violated.length === 0) {
+        doc.setTextColor(0, 240, 128);
+        doc.text('Semua asumsi analitik aktif dan valid.', 8, 153);
+    } else {
+        violated.forEach((ka, i) => {
+            doc.setTextColor(255, 80, 100);
+            doc.text(`✗ [${ka.id}] ${ka.text.substring(0, 90)}`, 8, 153 + i * 8);
+        });
+    }
+
+    // ── SECTION: OPEN INTEL GAPS ──
+    const gapStartY = 162 + Math.max(0, violated.length - 1) * 8;
+    doc.line(8, gapStartY, 202, gapStartY);
+    doc.setTextColor(255, 160, 0);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`INTELLIGENCE GAPS — ${openGaps.length} OPEN`, 8, gapStartY + 7);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    const gapDisplay = openGaps.slice(0, 5);
+    gapDisplay.forEach((g, i) => {
+        doc.setTextColor(255, 185, 100);
+        doc.text(`○ [${g.id}][${g.priority}] ${g.question.substring(0, 85)}`, 8, gapStartY + 16 + i * 8);
+    });
+    if (openGaps.length > 5) {
+        doc.setTextColor(130, 170, 190);
+        doc.text(`... dan ${openGaps.length - 5} gap lainnya`, 8, gapStartY + 16 + 5 * 8);
+    }
+
+    // ── SECTION: ANALYST SUMMARY ──
+    const summaryStartY = gapStartY + 24 + Math.min(openGaps.length, 6) * 8;
+    doc.line(8, summaryStartY, 202, summaryStartY);
+    doc.setTextColor(0, 255, 204);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('RINGKASAN ANALIS (AUTO-GENERATED)', 8, summaryStartY + 7);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(200, 220, 240);
+    try {
+        const summary = buildAnalystSummary();
+        const summaryLines = doc.splitTextToSize(summary, 190);
+        const maxLines = Math.min(summaryLines.length, 8);
+        doc.text(summaryLines.slice(0, maxLines), 8, summaryStartY + 16);
+    } catch (e) {
+        doc.text('Ringkasan tidak tersedia.', 8, summaryStartY + 16);
+    }
+
+    // ── FOOTER ──
+    doc.setFillColor(10, 20, 35);
+    doc.rect(0, 285, 210, 12, 'F');
+    doc.setDrawColor(0, 212, 255);
+    doc.setLineWidth(0.2);
+    doc.line(0, 285, 210, 285);
+    doc.setTextColor(60, 90, 110);
+    doc.setFontSize(6.5);
+    doc.text('INTEL DASHBOARD v3.0 — Metode: I&W + ACH + Red Team + DST + Key Assumptions + SIGINT Fusion', 8, 291);
+    doc.text(`Refresh #${refreshCount} | ${timestamp}`, 210 - 8, 291, { align: 'right' });
+
+    // ── SAVE ──
+    const btn = document.getElementById('pdf-btn');
+    if (btn) {
+        btn.textContent = '✓ PDF TERSIMPAN';
+        btn.style.color = 'var(--accent-green)';
+        setTimeout(() => {
+            btn.textContent = '⬇ EXPORT PDF';
+            btn.style.color = '';
+        }, 2000);
+    }
+
+    try {
+        // Explicit save — this usually forces the name correctly
+        doc.save(`Intel_Briefing_${dateSlug}.pdf`);
+    } catch (e) {
+        // Fallback for restricted WebViews where doc.save() strips filenames or fails
+        const pdfBase64 = doc.output('datauristring');
+        const a = document.createElement('a');
+        a.href = pdfBase64;
+        a.download = `Intel_Briefing_${dateSlug}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
 }
