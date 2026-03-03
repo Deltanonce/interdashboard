@@ -7,8 +7,7 @@ Write-Host 'AIS Proxy:   http://localhost:8888/api/ais-poll'
 
 # ── AIS CACHE: Background job collects AIS data via WebSocket ──
 $aisCache = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
-$aisConnected = $false
-$aisLastConnect = [DateTime]::MinValue
+$aisEverConnected = $false
 
 function Start-AisCollector {
     param([string]$ApiKey)
@@ -117,23 +116,46 @@ while ($listener.IsListening) {
     if ($url -eq '/api/ais-poll') {
         try {
             $aisMessages = @()
+            $isConnected = $false
             if ($script:aisJob) {
                 # Collect output from background job
-                $output = Receive-Job -Job $script:aisJob -ErrorAction SilentlyContinue
+                $output = @(Receive-Job -Job $script:aisJob -ErrorAction SilentlyContinue)
                 foreach ($line in $output) {
-                    if ($line -is [string] -and $line.StartsWith('MSG:')) {
-                        $aisMessages += $line.Substring(4)
+                    $lineStr = [string]$line
+                    if ($lineStr.StartsWith('MSG:')) {
+                        $aisMessages += $lineStr.Substring(4)
                     }
-                    if ($line -is [string] -and $line -eq 'CONNECTED') {
-                        $script:aisConnected = $true
+                    elseif ($lineStr -eq 'CONNECTED') {
+                        $isConnected = $true
+                        $script:aisEverConnected = $true
+                        Write-Host "[AIS] Server-side WebSocket CONNECTED!"
                     }
+                    elseif ($lineStr.StartsWith('ERROR:')) {
+                        Write-Host "[AIS] Server-side error: $lineStr"
+                    }
+                    elseif ($lineStr.StartsWith('DEBUG:')) {
+                        Write-Host "[AIS] $lineStr"
+                    }
+                    elseif ($lineStr.StartsWith('ATTEMPT:')) {
+                        Write-Host "[AIS] $lineStr"
+                    }
+                    elseif ($lineStr.StartsWith('SUBSCRIPTION:')) {
+                        Write-Host "[AIS] $lineStr"
+                    }
+                }
+                # Check job state
+                if ($script:aisJob.State -eq 'Failed') {
+                    Write-Host "[AIS] Background job FAILED! Restarting..."
+                    Remove-Job -Job $script:aisJob -Force -ErrorAction SilentlyContinue
+                    Start-AisCollector -ApiKey $aisKey
                 }
             }
             $jsonResult = @{
-                connected = ($script:aisConnected -eq $true)
+                connected = $isConnected -or $script:aisEverConnected -or ($aisMessages.Count -gt 0)
                 messages  = $aisMessages
                 count     = $aisMessages.Count
                 timestamp = (Get-Date -Format 'o')
+                jobState  = if ($script:aisJob) { $script:aisJob.State.ToString() } else { 'none' }
             } | ConvertTo-Json -Compress -Depth 3
             $respBytes = [System.Text.Encoding]::UTF8.GetBytes($jsonResult)
             $ctx.Response.ContentType = 'application/json'

@@ -245,12 +245,12 @@ const AssetTracker = (() => {
     // ══════════════════════════════════════════════════════════════════
 
     let aisWsFailCount = 0;
-    const AIS_WS_MAX_FAILURES = 4; // Give more chances before switching to HTTP
+    const AIS_WS_MAX_FAILURES = 4;
     const AIS_POLL_ENDPOINT = '/api/ais-poll';
-    const AIS_POLL_INTERVAL = 10000; // 10 seconds
+    const AIS_POLL_INTERVAL = 5000; // 5 seconds for faster updates
     let aisPollTimer = null;
-    let aisMode = 'websocket'; // 'websocket' or 'http'
-    let aisMessageCount = 0; // Debug counter
+    let aisMode = 'http'; // Force HTTP mode — browser WS blocked (code 1006) from http:// origins
+    let aisMessageCount = 0;
 
     function connectAis() {
         const apiKey = (typeof AISSTREAM_API_KEY !== 'undefined' && AISSTREAM_API_KEY) ? AISSTREAM_API_KEY : null;
@@ -341,11 +341,18 @@ const AssetTracker = (() => {
     }
 
     // ── AIS HTTP Polling (uses server-side relay) ──
+    let aisPollCount = 0;
     async function pollAisHttp() {
+        aisPollCount++;
         try {
             const res = await fetch(AIS_POLL_ENDPOINT);
             if (!res.ok) throw new Error(`AIS HTTP ${res.status}`);
             const data = await res.json();
+
+            // Debug: log first 10 polls, then every 20th
+            if (aisPollCount <= 10 || aisPollCount % 20 === 0) {
+                console.log(`[AIS-HTTP] Poll #${aisPollCount}: connected=${data.connected}, messages=${data.messages?.length || 0}, count=${data.count || 0}`);
+            }
 
             if (data.connected) {
                 stats.aisConnected = true;
@@ -359,10 +366,12 @@ const AssetTracker = (() => {
                         processAisMessage(msg);
                     } catch (e) { /* skip */ }
                 });
-                console.log(`[AIS] 🚢 ${data.messages.length} vessel messages received via HTTP relay`);
+                console.log(`[AIS] 🚢 ${data.messages.length} vessel messages received via HTTP relay (poll #${aisPollCount})`);
             }
         } catch (err) {
-            console.warn(`[AIS] HTTP poll error: ${err.message}`);
+            if (aisPollCount <= 5) {
+                console.warn(`[AIS-HTTP] Poll #${aisPollCount} error: ${err.message}`);
+            }
         }
     }
 
