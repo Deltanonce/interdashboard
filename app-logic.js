@@ -63,12 +63,9 @@ document.addEventListener('DOMContentLoaded', () => {
     runBootSequence().catch(e => { });
     // 15-second hard failsafe: force-hide overlay no matter what
     if (bootFailsafeTimer) clearTimeout(bootFailsafeTimer);
-    initTabEvents();
-    initToolbarEvents();
-    initAnalysisPanelEvents();
-    initRedPhoneEvents();
-    initSecurityEvents();
-    initDynamicEventDelegation();
+
+    // UI Event initialization moved to the bottom of the file for reliability
+    // (See: FIX KATEGORI 1: UI EVENT BINDING)
 
     // CSP Compliant Font Load (Replacing inline onload)
     const fontLink = document.getElementById('font-link');
@@ -217,15 +214,7 @@ function hideLoadingOverlay() {
 
 // ===== EVENT INIT FUNCTIONS (CSP Compliant) =====
 
-function initTabEvents() {
-    // Accordion toggle untuk radar chart resize
-    const radarAcc = document.getElementById('acc-netassess');
-    if (radarAcc) {
-        radarAcc.addEventListener('toggle', (e) => {
-            if (e.target.open && radarChart) setTimeout(() => radarChart.update(), 120);
-        });
-    }
-}
+// Redundant initTabEvents removed. Moved to consolidated initialization at bottom.
 
 // ===== CLOCK =====
 function updateClock() {
@@ -283,15 +272,14 @@ async function simulateRefresh(isInitial) {
             if (criticalSpike && (Date.now() - lastRedPhoneTime > RPCOOLDOWN)) {
                 lastRedPhoneTime = Date.now();
                 document.getElementById('rp-message').innerHTML =
-                    `Peringatan Darurat: Lonjakan tajam pada skenario 
-                    <strong>${criticalSpike.name}</strong> 
-                    (+${criticalSpike.current - criticalSpike.baseline}%).<br><br>
-                    Threshold red-line sistem analisis dilampaui.`;
+                    `Peringatan Darurat: Lonjakan tajam pada skenario <strong>${criticalSpike.name}</strong> (+${(criticalSpike.current - criticalSpike.baseline).toFixed(1)}%).<br><br>
+                    Sistem mendeteksi pergeseran probabilitas kritis yang memerlukan perhatian segera.`;
                 document.getElementById('red-phone-modal').classList.remove('hidden');
             }
         }
-
-    } catch (e) { console.error('renderAll error:', e); }
+    } catch (e) {
+        console.error('Error during simulateRefresh:', e);
+    }
 
     try {
         await sleep(250);
@@ -703,24 +691,27 @@ function renderGapPanel() {
 
 // ===== RENDER ALL =====
 function renderAll() {
-    try { renderThreat(); } catch (e) { }
-    try { renderScenarios(); } catch (e) { }
-    try { renderDeltaTracker(); } catch (e) { }
-    try { renderNews(); } catch (e) { }
-    try { renderAnalystSummary(); } catch (e) { }
-    try { renderIW(); } catch (e) { } // renderIW sudah memanggil renderIWCounts()
-    try { renderSignalNoise(); } catch (e) { }
-    try { renderSIGINT(); } catch (e) { }
-    try { renderAssumptions(); } catch (e) { }
-    try { renderSnapshotPanel(); } catch (e) { }
-    try { renderGapPanel(); } catch (e) { }
-    try { renderACH(); } catch (e) { }
-    try { renderRedTeam(); } catch (e) { }
-    try { renderNetAssessTable(); } catch (e) { }
-    try { renderCone(); } catch (e) { }
-    try { renderChronology(); } catch (e) { }
-    try { renderPropaganda(); } catch (e) { }
-    try { renderUnverified(); } catch (e) { }
+    // Bungkus semua dengan try-catch individu agar 1 error tidak mematikan seluruh UI
+    try { renderThreat(); } catch (e) { console.error('renderThreat fail:', e); }
+    try { renderScenarios(); } catch (e) { console.error('renderScen fail:', e); }
+    try { renderDeltaTracker(); } catch (e) { console.error('renderDelta fail:', e); }
+    try { renderNews(); } catch (e) { console.error('renderNews fail:', e); }
+    try { renderAnalystSummary(); } catch (e) { console.error('renderSummary fail:', e); }
+    try { renderIW(); } catch (e) { console.error('renderIW fail:', e); }
+    try { renderSignalNoise(); } catch (e) { console.error('renderSignal fail:', e); }
+    try { renderSIGINT(); } catch (e) { console.error('renderSIGINT fail:', e); }
+    try { renderAssumptions(); } catch (e) { console.error('renderAssump fail:', e); }
+    try { renderSnapshotPanel(); } catch (e) { console.error('renderSnap fail:', e); }
+    try { renderGapPanel(); } catch (e) { console.error('renderGap fail:', e); }
+
+    // Modul tambahan yang memerlukan sinkronisasi eksplisit
+    try { renderACH(); } catch (e) { console.error('renderACH fail:', e); }
+    try { renderRedTeam(); } catch (e) { console.error('renderRedTeam fail:', e); }
+    try { renderNetAssessTable(); } catch (e) { console.error('renderNetAssess fail:', e); }
+    try { renderCone(); } catch (e) { console.error('renderCone fail:', e); }
+    try { renderChronology(); } catch (e) { console.error('renderChronology fail:', e); }
+    try { renderPropaganda(); } catch (e) { console.error('renderPropaganda fail:', e); }
+    try { renderUnverified(); } catch (e) { console.error('renderUnverified fail:', e); }
 }
 
 // ===== THREAT =====
@@ -1255,104 +1246,9 @@ function renderNetAssessTable() {
   </table>`;
     document.getElementById('netassess-summary').innerHTML = '<strong>Net Assessment:</strong> AS memiliki superioritas absolut di hampir semua dimensi. Iran memimpin di <strong>Proxy Networks (85/100)</strong> sebagai asymmetric equalizer. Israel unggul di <strong>Siber (82)</strong> dan <strong>Presisi Militer (78)</strong>. Konflik langsung Iran vs Israel: Israel menang militer konvensional, namun Iran dapat mengeksploitasi proxy untuk meningkatkan biaya secara signifikan.';
 }
-function initToolbarEvents() {
-    // Bottom toolbar — data-layer pills
-    document.querySelectorAll('.wv-pill[data-layer]').forEach(btn => {
-        btn.addEventListener('click', function () {
-            const cat = this.getAttribute('data-layer');
-            if (cat && typeof window.toggleLayer === 'function') window.toggleLayer(cat, this);
-        });
-    });
+// Fragmented initialization functions removed. Moved to consolidated block below.
 
-    // Bottom toolbar — data-live-layer pills (ADS-B, AIS)
-    document.querySelectorAll('.wv-pill[data-live-layer]').forEach(btn => {
-        btn.addEventListener('click', function () {
-            const src = this.getAttribute('data-live-layer');
-            if (src && typeof window.toggleLiveLayer === 'function') window.toggleLiveLayer(src, this);
-        });
-    });
-
-    // Analysis panel open/close
-    const btnAnalysis = document.getElementById('btn-analysis');
-    if (btnAnalysis) btnAnalysis.addEventListener('click', () => {
-        if (typeof window.toggleAnalysisPanel === 'function') window.toggleAnalysisPanel();
-    });
-
-    const closeAnalysisBtn = document.getElementById('close-analysis-btn');
-    if (closeAnalysisBtn) closeAnalysisBtn.addEventListener('click', () => {
-        if (typeof window.toggleAnalysisPanel === 'function') window.toggleAnalysisPanel();
-    });
-
-    // Refresh & PDF buttons
-    const refreshBtn = document.getElementById('refresh-btn');
-    if (refreshBtn) refreshBtn.addEventListener('click', triggerRefresh);
-
-    const pdfBtn = document.getElementById('pdf-btn');
-    if (pdfBtn) pdfBtn.addEventListener('click', generatePDFReport);
-
-    // Snapshot button
-    const snapBtn = document.getElementById('snapshot-btn');
-    if (snapBtn) snapBtn.addEventListener('click', saveSnapshot);
-
-    // UV (Unverified) toggle button
-    const uvBtn = document.getElementById('uv-toggle-btn');
-    if (uvBtn) uvBtn.addEventListener('click', toggleUnverified);
-
-    // Perspective buttons (Red Team) — data-perspective
-    document.querySelectorAll('.pv-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
-            const p = this.getAttribute('data-perspective');
-            if (p) setPerspective(p, this);
-        });
-    });
-
-    // Feed filter buttons — data-feed-filter
-    document.querySelectorAll('.ff-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
-            const f = this.getAttribute('data-feed-filter');
-            if (f) filterFeed(f);
-        });
-    });
-
-    // High-cred filter checkbox
-    const credFilter = document.getElementById('high-cred-filter');
-    if (credFilter) credFilter.addEventListener('change', toggleCredFilter);
-}
-
-function initAnalysisPanelEvents() {
-    // Event delegation untuk gap items — klik untuk cycleGapStatus
-    const overlay = document.getElementById('analysis-overlay');
-    if (!overlay) return;
-
-    overlay.addEventListener('click', function (e) {
-        const gapItem = e.target.closest('[data-gap-id]');
-        if (gapItem) {
-            const id = gapItem.getAttribute('data-gap-id');
-            if (id) cycleGapStatus(id);
-        }
-    });
-}
-
-function initRedPhoneEvents() {
-    const rpAckBtn = document.getElementById('rp-ack-btn');
-    if (rpAckBtn) rpAckBtn.addEventListener('click', acknowledgeRedPhone);
-}
-
-function initSecurityEvents() {
-    // Handled in specific event types or initialization
-}
-
-function initDynamicEventDelegation() {
-    // Event delegation untuk elemen yang di-render secara dinamis
-    // Challenge buttons (dibuat ulang tiap renderScenarios)
-    document.addEventListener('click', function (e) {
-        const challengeBtn = e.target.closest('[data-challenge-id]');
-        if (challengeBtn) {
-            const id = challengeBtn.getAttribute('data-challenge-id');
-            if (id) toggleChallenge(id);
-        }
-    });
-}
+// Consolidated initialization moved to end of script.
 function initRadarChart() {
     const canvas = document.getElementById('radar-chart');
     if (!canvas) return;
@@ -1846,3 +1742,114 @@ function generatePDFReport() {
         document.body.removeChild(a);
     }
 }
+
+// ==========================================
+// FIX KATEGORI 1: UI EVENT BINDING
+// Restored consolidated initialization
+// ==========================================
+
+function initTabEvents() {
+    const radarAcc = document.getElementById('acc-netassess');
+    if (radarAcc) {
+        radarAcc.addEventListener('toggle', (e) => {
+            if (e.target.open && typeof radarChart !== 'undefined' && radarChart) {
+                setTimeout(() => radarChart.update(), 120);
+            }
+        });
+    }
+}
+
+function initToolbarEvents() {
+    // Layer toggles
+    document.querySelectorAll('.wv-pill[data-layer]').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const cat = this.getAttribute('data-layer');
+            if (cat && typeof window.toggleLayer === 'function') window.toggleLayer(cat, this);
+        });
+    });
+    document.querySelectorAll('.wv-pill[data-live-layer]').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const src = this.getAttribute('data-live-layer');
+            if (src && typeof window.toggleLiveLayer === 'function') window.toggleLiveLayer(src, this);
+        });
+    });
+
+    // Analysis panel toggles
+    const btnAnalysis = document.getElementById('btn-analysis');
+    if (btnAnalysis) btnAnalysis.addEventListener('click', () => {
+        if (typeof window.toggleAnalysisPanel === 'function') window.toggleAnalysisPanel();
+    });
+    const closeAnalysisBtn = document.getElementById('close-analysis-btn');
+    if (closeAnalysisBtn) closeAnalysisBtn.addEventListener('click', () => {
+        if (typeof window.toggleAnalysisPanel === 'function') window.toggleAnalysisPanel();
+    });
+
+    // Action buttons
+    const refreshBtn = document.getElementById('refresh-btn');
+    if (refreshBtn) refreshBtn.addEventListener('click', triggerRefresh);
+
+    const pdfBtn = document.getElementById('pdf-btn');
+    if (pdfBtn) pdfBtn.addEventListener('click', generatePDFReport);
+
+    const snapBtn = document.getElementById('snapshot-btn');
+    if (snapBtn) snapBtn.addEventListener('click', saveSnapshot);
+
+    const uvBtn = document.getElementById('uv-toggle-btn');
+    if (uvBtn) uvBtn.addEventListener('click', toggleUnverified);
+
+    // Perspective & Filter buttons
+    document.querySelectorAll('.pv-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const p = this.getAttribute('data-perspective');
+            if (p) setPerspective(p, this);
+        });
+    });
+
+    document.querySelectorAll('.ff-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const f = this.getAttribute('data-feed-filter');
+            if (f) filterFeed(f);
+        });
+    });
+
+    const credFilter = document.getElementById('high-cred-filter');
+    if (credFilter) credFilter.addEventListener('change', toggleCredFilter);
+}
+
+function initAnalysisPanelEvents() {
+    const overlay = document.getElementById('analysis-overlay');
+    if (!overlay) return;
+    overlay.addEventListener('click', function (e) {
+        const gapItem = e.target.closest('[data-gap-id]');
+        if (gapItem) {
+            const id = gapItem.getAttribute('data-gap-id');
+            if (id) cycleGapStatus(id);
+        }
+    });
+}
+
+function initRedPhoneEvents() {
+    const rpAckBtn = document.getElementById('rp-ack-btn');
+    if (rpAckBtn) rpAckBtn.addEventListener('click', acknowledgeRedPhone);
+}
+
+function initDynamicEventDelegation() {
+    document.addEventListener('click', function (e) {
+        // Challenge buttons
+        const challengeBtn = e.target.closest('[data-challenge-id]');
+        if (challengeBtn) {
+            const id = challengeBtn.getAttribute('data-challenge-id');
+            if (id) toggleChallenge(id);
+        }
+    });
+}
+
+// Final Deployment Initialization
+document.addEventListener('DOMContentLoaded', () => {
+    initTabEvents();
+    initToolbarEvents();
+    initAnalysisPanelEvents();
+    initRedPhoneEvents();
+    initDynamicEventDelegation();
+    console.log('[INIT] UI Event Binding Sequence Complete.');
+});
