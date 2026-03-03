@@ -189,11 +189,11 @@
     <div class="wv-pill-group">
       <button class="wv-pill active" data-color="cyan" data-live-layer="adsb">
         <span class="wv-pill-dot" style="background:var(--accent-cyan)"></span>
-        AIR (ADS-B) <span class="wv-pill-val" id="live-adsb-count">0</span>
+        AIR (ADS-B) <span class="wv-pill-val" id="toolbar-adsb-count">0</span>
       </button>
       <button class="wv-pill active" data-color="green" data-live-layer="ais">
-        <span class="wv-pill-dot connected" id="ais-status-dot"></span>
-        SEA (AIS) <span class="wv-pill-val" id="live-ais-count">0</span>
+        <span class="wv-pill-dot connected" id="toolbar-ais-dot"></span>
+        SEA (AIS) <span class="wv-pill-val" id="toolbar-ais-count">0</span>
       </button>
       <button class="wv-pill active" data-color="blue" data-layer="naval">
         NAVAL
@@ -412,6 +412,8 @@
 
                 <div class="card-title">SNAPSHOT HISTORY <span class="snap-count-badge" id="snap-count">0 / 5</span>
                 </div>
+                <button class="btn-snapshot" id="snapshot-btn" style="margin-bottom:8px;width:100%">◉ SIMPAN
+                  SNAPSHOT</button>
                 <div id="snapshot-card-content">
                   <div id="snapshot-list">
                     <div class="snap-empty">Belum ada snapshot tersimpan.</div>
@@ -439,8 +441,7 @@
 
                 <div class="card-title unverified-title" style="margin-top:15px; color:#ff8c00;">⚠️ UNVERIFIED /
                   BOCORAN</div>
-                <button class="uv-toggle" id="uv-toggle-btn">
-                  style="margin-bottom:5px;">TAMPILKAN</button>
+                <button class="uv-toggle" id="uv-toggle-btn" style="margin-bottom:5px;">TAMPILKAN</button>
                 <div id="unverified-feed" class="uv-hidden"></div>
               </div>
             </div>

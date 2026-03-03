@@ -113,14 +113,19 @@ function initMap() {
         if (zoomEl) zoomEl.textContent = leafletMap.getZoom();
     });
 
-    // Sync bottom toolbar pill counts
+    // Sync bottom toolbar pill counts to new unique IDs
     setInterval(() => {
-        const adsbCount = document.getElementById('live-adsb-count');
-        const aisCount = document.getElementById('live-ais-count');
-        const wvAdsb = document.getElementById('wv-adsb-count');
-        const wvAis = document.getElementById('wv-ais-count');
-        if (adsbCount && wvAdsb) wvAdsb.textContent = adsbCount.textContent;
-        if (aisCount && wvAis) wvAis.textContent = aisCount.textContent;
+        const adsbVal = document.getElementById('live-adsb-count');
+        const aisVal = document.getElementById('live-ais-count');
+        const toolbarAdsb = document.getElementById('toolbar-adsb-count');
+        const toolbarAis = document.getElementById('toolbar-ais-count');
+        const toolbarAisDot = document.getElementById('toolbar-ais-dot');
+        const aisStatusDot = document.getElementById('ais-status-dot');
+        if (adsbVal && toolbarAdsb) toolbarAdsb.textContent = adsbVal.textContent;
+        if (aisVal && toolbarAis) toolbarAis.textContent = aisVal.textContent;
+        if (aisStatusDot && toolbarAisDot) {
+            toolbarAisDot.className = aisStatusDot.className;
+        }
     }, 2000);
 }
 

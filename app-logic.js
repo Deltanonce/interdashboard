@@ -215,13 +215,13 @@ function hideLoadingOverlay() {
     try { document.getElementById('loading-overlay').classList.add('hidden'); } catch (e) { }
 }
 
-// ===== TABS =====
-function initTabs() {
-    // Accordion interaction is natively supported by <details>.
-    // This is a stub for potential future tab re-integration or resize triggers.
-    const radar = document.getElementById('acc-netassess');
-    if (radar) {
-        radar.addEventListener('toggle', (e) => {
+// ===== EVENT INIT FUNCTIONS (CSP Compliant) =====
+
+function initTabEvents() {
+    // Accordion toggle untuk radar chart resize
+    const radarAcc = document.getElementById('acc-netassess');
+    if (radarAcc) {
+        radarAcc.addEventListener('toggle', (e) => {
             if (e.target.open && radarChart) setTimeout(() => radarChart.update(), 120);
         });
     }
@@ -269,6 +269,7 @@ async function simulateRefresh(isInitial) {
     }
     try {
         applyProbabilityUpdate();
+        renderAll();
 
         // --- RED PHONE TRIGGER LOGIC ---
         if (!isInitial) {
@@ -543,7 +544,7 @@ function saveSnapshot() {
 
 // Sparkline Rendering with caching
 function buildSparkline(scenarioId) {
-    if (!SNAPSHOT_HISTORY || SNAPSHOT_HISTORY.length < 2) return '';
+    if (typeof SNAPSHOT_HISTORY === 'undefined' || !SNAPSHOT_HISTORY || SNAPSHOT_HISTORY.length < 2) return '';
 
     // Invalidate hanya saat snapshot baru ditambahkan
     if (SNAPSHOT_HISTORY.length !== _sparkCacheLen) {
@@ -702,8 +703,24 @@ function renderGapPanel() {
 
 // ===== RENDER ALL =====
 function renderAll() {
-    renderThreat(); renderScenarios(); renderDeltaTracker(); renderNews();
-    renderAnalystSummary(); renderIW(); renderIWCounts(); renderSignalNoise(); renderSIGINT(); renderAssumptions(); renderSnapshotPanel(); renderGapPanel();
+    try { renderThreat(); } catch (e) { }
+    try { renderScenarios(); } catch (e) { }
+    try { renderDeltaTracker(); } catch (e) { }
+    try { renderNews(); } catch (e) { }
+    try { renderAnalystSummary(); } catch (e) { }
+    try { renderIW(); } catch (e) { } // renderIW sudah memanggil renderIWCounts()
+    try { renderSignalNoise(); } catch (e) { }
+    try { renderSIGINT(); } catch (e) { }
+    try { renderAssumptions(); } catch (e) { }
+    try { renderSnapshotPanel(); } catch (e) { }
+    try { renderGapPanel(); } catch (e) { }
+    try { renderACH(); } catch (e) { }
+    try { renderRedTeam(); } catch (e) { }
+    try { renderNetAssessTable(); } catch (e) { }
+    try { renderCone(); } catch (e) { }
+    try { renderChronology(); } catch (e) { }
+    try { renderPropaganda(); } catch (e) { }
+    try { renderUnverified(); } catch (e) { }
 }
 
 // ===== THREAT =====
@@ -785,10 +802,14 @@ function computeDST(scenario) {
             if (ids.includes(scenario.id)) { scenGroup = g; break; }
         }
         if (scenGroup && typeof IW_INDICATORS !== 'undefined' && Array.isArray(IW_INDICATORS)) {
-            const triggered = IW_INDICATORS.filter(
-                iw => iw.group === scenGroup && iw.status === 'triggered'
-            ).length;
-            beliefFactor += triggered * 0.04;
+            const groupToCat = { militer: 'MILITER', nuklir: 'INTELIJEN', ekonomi: 'EKONOMI', diplomatik: 'DIPLOMATIK' };
+            const catName = groupToCat[scenGroup];
+            if (catName) {
+                const triggered = IW_INDICATORS.filter(
+                    iw => iw.cat === catName && iw.status === 'triggered'
+                ).length;
+                beliefFactor += triggered * 0.04;
+            }
         }
     } catch (e) { }
 
@@ -819,10 +840,14 @@ function computeDST(scenario) {
             if (ids.includes(scenario.id)) { sg = g; break; }
         }
         if (sg && typeof IW_INDICATORS !== 'undefined' && Array.isArray(IW_INDICATORS)) {
-            const triggeredCount = IW_INDICATORS.filter(
-                iw => iw.group === sg && iw.status === 'triggered'
-            ).length;
-            plausFactor -= triggeredCount * 0.05;
+            const groupToCat2 = { militer: 'MILITER', nuklir: 'INTELIJEN', ekonomi: 'EKONOMI', diplomatik: 'DIPLOMATIK' };
+            const catName2 = groupToCat2[sg];
+            if (catName2) {
+                const triggeredCount = IW_INDICATORS.filter(
+                    iw => iw.cat === catName2 && iw.status === 'triggered'
+                ).length;
+                plausFactor -= triggeredCount * 0.05;
+            }
         }
     } catch (e) { }
     plausFactor += violations * 0.08;
@@ -1230,18 +1255,103 @@ function renderNetAssessTable() {
   </table>`;
     document.getElementById('netassess-summary').innerHTML = '<strong>Net Assessment:</strong> AS memiliki superioritas absolut di hampir semua dimensi. Iran memimpin di <strong>Proxy Networks (85/100)</strong> sebagai asymmetric equalizer. Israel unggul di <strong>Siber (82)</strong> dan <strong>Presisi Militer (78)</strong>. Konflik langsung Iran vs Israel: Israel menang militer konvensional, namun Iran dapat mengeksploitasi proxy untuk meningkatkan biaya secara signifikan.';
 }
+function initToolbarEvents() {
+    // Bottom toolbar — data-layer pills
+    document.querySelectorAll('.wv-pill[data-layer]').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const cat = this.getAttribute('data-layer');
+            if (cat && typeof window.toggleLayer === 'function') window.toggleLayer(cat, this);
+        });
+    });
+
+    // Bottom toolbar — data-live-layer pills (ADS-B, AIS)
+    document.querySelectorAll('.wv-pill[data-live-layer]').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const src = this.getAttribute('data-live-layer');
+            if (src && typeof window.toggleLiveLayer === 'function') window.toggleLiveLayer(src, this);
+        });
+    });
+
+    // Analysis panel open/close
+    const btnAnalysis = document.getElementById('btn-analysis');
+    if (btnAnalysis) btnAnalysis.addEventListener('click', () => {
+        if (typeof window.toggleAnalysisPanel === 'function') window.toggleAnalysisPanel();
+    });
+
+    const closeAnalysisBtn = document.getElementById('close-analysis-btn');
+    if (closeAnalysisBtn) closeAnalysisBtn.addEventListener('click', () => {
+        if (typeof window.toggleAnalysisPanel === 'function') window.toggleAnalysisPanel();
+    });
+
+    // Refresh & PDF buttons
+    const refreshBtn = document.getElementById('refresh-btn');
+    if (refreshBtn) refreshBtn.addEventListener('click', triggerRefresh);
+
+    const pdfBtn = document.getElementById('pdf-btn');
+    if (pdfBtn) pdfBtn.addEventListener('click', generatePDFReport);
+
+    // Snapshot button
+    const snapBtn = document.getElementById('snapshot-btn');
+    if (snapBtn) snapBtn.addEventListener('click', saveSnapshot);
+
+    // UV (Unverified) toggle button
+    const uvBtn = document.getElementById('uv-toggle-btn');
+    if (uvBtn) uvBtn.addEventListener('click', toggleUnverified);
+
+    // Perspective buttons (Red Team) — data-perspective
+    document.querySelectorAll('.pv-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const p = this.getAttribute('data-perspective');
+            if (p) setPerspective(p, this);
+        });
+    });
+
+    // Feed filter buttons — data-feed-filter
+    document.querySelectorAll('.ff-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const f = this.getAttribute('data-feed-filter');
+            if (f) filterFeed(f);
+        });
+    });
+
+    // High-cred filter checkbox
+    const credFilter = document.getElementById('high-cred-filter');
+    if (credFilter) credFilter.addEventListener('change', toggleCredFilter);
+}
+
+function initAnalysisPanelEvents() {
+    // Event delegation untuk gap items — klik untuk cycleGapStatus
+    const overlay = document.getElementById('analysis-overlay');
+    if (!overlay) return;
+
+    overlay.addEventListener('click', function (e) {
+        const gapItem = e.target.closest('[data-gap-id]');
+        if (gapItem) {
+            const id = gapItem.getAttribute('data-gap-id');
+            if (id) cycleGapStatus(id);
+        }
+    });
+}
+
 function initRedPhoneEvents() {
     const rpAckBtn = document.getElementById('rp-ack-btn');
     if (rpAckBtn) rpAckBtn.addEventListener('click', acknowledgeRedPhone);
 }
 
 function initSecurityEvents() {
-    const credFilter = document.getElementById('high-cred-filter');
-    if (credFilter) {
-        credFilter.addEventListener('change', () => {
-            if (typeof toggleCredFilter === 'function') toggleCredFilter();
-        });
-    }
+    // Handled in specific event types or initialization
+}
+
+function initDynamicEventDelegation() {
+    // Event delegation untuk elemen yang di-render secara dinamis
+    // Challenge buttons (dibuat ulang tiap renderScenarios)
+    document.addEventListener('click', function (e) {
+        const challengeBtn = e.target.closest('[data-challenge-id]');
+        if (challengeBtn) {
+            const id = challengeBtn.getAttribute('data-challenge-id');
+            if (id) toggleChallenge(id);
+        }
+    });
 }
 function initRadarChart() {
     const canvas = document.getElementById('radar-chart');
@@ -1517,7 +1627,8 @@ function generatePDFReport() {
     const now = new Date();
     const wib = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 7 * 3600000);
     const p = n => String(n).padStart(2, '0');
-    const timestamp = `${p(wib.getDate())} Mar ${wib.getFullYear()} — ${p(wib.getHours())}:${p(wib.getMinutes())} WIB`;
+    const pdfMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const timestamp = `${p(wib.getDate())} ${pdfMonths[wib.getMonth()]} ${wib.getFullYear()} — ${p(wib.getHours())}:${p(wib.getMinutes())} WIB`;
     const dateSlug = `${wib.getFullYear()}${p(wib.getMonth() + 1)}${p(wib.getDate())}_${p(wib.getHours())}${p(wib.getMinutes())}`;
     const threatLabels = ['RENDAH', 'SEDANG', 'WASPADA', 'TINGGI', 'KRITIS'];
     const threatColors = {

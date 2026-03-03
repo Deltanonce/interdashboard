@@ -39,6 +39,7 @@ const AssetTracker = (() => {
     let aisRenderTimer = null;  // Debounce timer for AIS batch render
     let isRunning = false;
     let aisCountCache = 0;      // Incremental counter instead of O(n) filter
+    let staleCleanupTimer = null;
     let stats = { adsbCount: 0, aisCount: 0, lastAdsbPoll: null, aisConnected: false, spoofAlerts: 0 };
 
     // ── UTILITY: Haversine Distance (km) ───────────────────────────────
@@ -259,8 +260,9 @@ const AssetTracker = (() => {
 
     function connectAis() {
         const apiKey = (typeof AISSTREAM_API_KEY !== 'undefined' && AISSTREAM_API_KEY) ? AISSTREAM_API_KEY : null;
-        if (!apiKey || apiKey.length < 10) {
-            console.warn('[AIS] No API key configured. Set AISSTREAM_API_KEY in config.js. Maritime tracking disabled.');
+        const PLACEHOLDER_KEY = 'GANTI_DENGAN_API_KEY_ANDA';
+        if (!apiKey || apiKey.length < 10 || apiKey === PLACEHOLDER_KEY) {
+            console.warn('[AIS] API key belum dikonfigurasi. Set AISSTREAM_API_KEY di config.js. Maritime tracking dinonaktifkan.');
             return;
         }
 
@@ -571,16 +573,23 @@ const AssetTracker = (() => {
     }
 
     function updateLiveCountBadge() {
+        // HUD (Left Panel)
         const adsbBadge = document.getElementById('live-adsb-count');
         const aisBadge = document.getElementById('live-ais-count');
         if (adsbBadge) adsbBadge.textContent = stats.adsbCount;
         if (aisBadge) aisBadge.textContent = stats.aisCount;
 
-        // AIS connection indicator
-        const aisIndicator = document.getElementById('ais-status-dot');
-        if (aisIndicator) {
-            aisIndicator.classList.toggle('connected', stats.aisConnected);
-        }
+        // BOTTOM TOOLBAR
+        const adsbToolbar = document.getElementById('toolbar-adsb-count');
+        const aisToolbar = document.getElementById('toolbar-ais-count');
+        if (adsbToolbar) adsbToolbar.textContent = stats.adsbCount;
+        if (aisToolbar) aisToolbar.textContent = stats.aisCount;
+
+        // AIS connection indicator (Update both)
+        ['ais-status-dot', 'toolbar-ais-dot'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.toggle('connected', stats.aisConnected);
+        });
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -595,13 +604,18 @@ const AssetTracker = (() => {
         connectAis();
 
         // Periodic stale cleanup every 60s
-        setInterval(cleanStaleAssets, 60000);
+        if (staleCleanupTimer) clearInterval(staleCleanupTimer);
+        staleCleanupTimer = setInterval(cleanStaleAssets, 60000);
     }
 
     function stop() {
         isRunning = false;
         stopAdsbPolling();
         disconnectAis();
+        if (staleCleanupTimer) {
+            clearInterval(staleCleanupTimer);
+            staleCleanupTimer = null;
+        }
         console.log('[AssetTracker] Stopped all tracking.');
     }
 
