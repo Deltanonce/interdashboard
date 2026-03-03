@@ -51,9 +51,13 @@ let bootFailsafeTimer = null;
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
-    // Sync base to initial current values
-    scenarios = scenarios.map(s => ({ ...s, base: s.base ?? s.current }));
-    if (typeof recomputeAllCurrents === 'function') recomputeAllCurrents();
+    // Guard: ensure app.js data is available before recomputing
+    if (typeof scenarios !== 'undefined' && Array.isArray(scenarios)) {
+        scenarios = scenarios.map(s => ({ ...s, base: s.base ?? s.current }));
+        if (typeof recomputeAllCurrents === 'function') recomputeAllCurrents();
+    } else {
+        console.error('[INIT] FATAL: scenarios not defined — app.js may not have loaded before app-logic.js');
+    }
 
     runBootSequence().catch(e => { });
     // 15-second hard failsafe: force-hide overlay no matter what
@@ -117,8 +121,11 @@ async function runBootSequence() {
         if (masterClockTimer) clearInterval(masterClockTimer);
         masterClockTimer = setInterval(updateClock, 1000);
     } catch (e) { }
-    try { startCountdown(); } catch (e) { }
+
+    // startCountdown() dihilangkan karena dipanggil via simulateRefresh di akhir
     try { initMap(); } catch (e) { }
+    // OPTIMIZATION: Start telemetry explicitly AFTER map is ready, preventing race conditions
+    try { if (typeof AssetTracker !== 'undefined') AssetTracker.start(); } catch (e) { }
     try { initRadarChart(); } catch (e) { }
     try { computeIW(); renderIW(); } catch (e) { }
     try { renderACH(); } catch (e) { }
@@ -223,9 +230,13 @@ function startCountdown() {
     if (countdownTimer) clearInterval(countdownTimer);
     countdownTimer = setInterval(() => {
         countdownSeconds--;
+        if (countdownSeconds <= 0) {
+            countdownSeconds = 0;
+            clearInterval(countdownTimer);
+            if (!isLoading) simulateRefresh(false);
+        }
         const m = Math.floor(countdownSeconds / 60), s = countdownSeconds % 60;
         document.getElementById('countdown-display').textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-        if (countdownSeconds <= 0) { clearInterval(countdownTimer); simulateRefresh(false); }
     }, 1000);
 }
 function triggerRefresh() { if (!isLoading) { clearInterval(countdownTimer); simulateRefresh(false); } }
@@ -267,26 +278,31 @@ async function simulateRefresh(isInitial) {
             }
         }
 
-        renderAll();
     } catch (e) { console.error('renderAll error:', e); }
-    await sleep(250);
-    hideLoadingOverlay();
-    // Re-init map AFTER overlay hides so SVG renders into visible container
-    try { initMap(); } catch (e) { console.error('initMap post-load:', e); }
+
     try {
-        btn.classList.remove('loading');
-    } catch (e) { }
-    isLoading = false;
-    refreshCount++;
-    try {
-        document.getElementById('refresh-count').textContent = refreshCount;
-        const now = new Date(), wib = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 7 * 3600000);
-        const p = n => String(n).padStart(2, '0');
-        const ts = `${p(wib.getHours())}:${p(wib.getMinutes())}`;
-        document.getElementById('last-update').textContent = ts;
-        document.getElementById('analysis-time').textContent = `${ts} WIB`;
-    } catch (e) { }
-    try { startCountdown(); } catch (e) { }
+        await sleep(250);
+        hideLoadingOverlay();
+        // Re-init map AFTER overlay hides so SVG renders into visible container
+        try { initMap(); } catch (e) { console.error('initMap post-load:', e); }
+        try {
+            btn.classList.remove('loading');
+        } catch (e) { }
+        isLoading = false;
+        refreshCount++;
+        try {
+            document.getElementById('refresh-count').textContent = refreshCount;
+            const now = new Date(), wib = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 7 * 3600000);
+            const p = n => String(n).padStart(2, '0');
+            const ts = `${p(wib.getHours())}:${p(wib.getMinutes())}`;
+            document.getElementById('last-update').textContent = ts;
+            document.getElementById('analysis-time').textContent = `${ts} WIB`;
+        } catch (e) { }
+    } finally {
+        // ALWAYS restart the countdown, even if rendering errors out
+        try { startCountdown(); } catch (e) { }
+        isLoading = false; // ensure unlock
+    }
 }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -366,7 +382,7 @@ function applyProbabilityUpdate() {
     }
     computeIW();
 
-    const iwT = IW_INDICATORS.filter(i => i.status === 'triggered').length;
+    const iwT = (typeof IW_INDICATORS !== 'undefined' && Array.isArray(IW_INDICATORS)) ? IW_INDICATORS.filter(i => i.status === 'triggered').length : 0;
     const mul = 1 + iwT * 0.02; // I&W multiplier
     scenarios = scenarios.map(s => {
         const diff = s.base - s.baseline, rev = -diff * 0.12, noise = (Math.random() - 0.5) * 6 * mul;
@@ -394,6 +410,7 @@ function updateThreatLevel() {
         return s ? s.current : 0;
     };
 
+    if (typeof IW_INDICATORS === 'undefined' || !Array.isArray(IW_INDICATORS)) return;
     const iwT = IW_INDICATORS.filter(i => i.status === 'triggered').length;
     const iwW = IW_INDICATORS.filter(i => i.status === 'watch').length;
 
@@ -725,12 +742,14 @@ function computeDST(scenario) {
         };
         const relHypIndices = groupACHmap[scenario.group] || [0, 1];
         let corrobC = 0, totalCells = 0;
-        ACH_EVIDENCE.forEach(ev => {
-            relHypIndices.forEach(hi => {
-                totalCells++;
-                if (ev.cells[hi] === 'C') corrobC++;
+        if (typeof ACH_EVIDENCE !== 'undefined' && Array.isArray(ACH_EVIDENCE)) {
+            ACH_EVIDENCE.forEach(ev => {
+                relHypIndices.forEach(hi => {
+                    totalCells++;
+                    if (ev.cells[hi] === 'C') corrobC++;
+                });
             });
-        });
+        }
         const corrobRatio = totalCells > 0 ? corrobC / totalCells : 0.5;
         // corrobRatio > 0.6 = strong evidence → higher belief
         // corrobRatio < 0.3 = weak evidence → lower belief
@@ -749,7 +768,7 @@ function computeDST(scenario) {
         for (const [g, ids] of Object.entries(groupMap)) {
             if (ids.includes(scenario.id)) { scenGroup = g; break; }
         }
-        if (scenGroup) {
+        if (scenGroup && typeof IW_INDICATORS !== 'undefined' && Array.isArray(IW_INDICATORS)) {
             const triggered = IW_INDICATORS.filter(
                 iw => iw.group === scenGroup && iw.status === 'triggered'
             ).length;
@@ -760,11 +779,13 @@ function computeDST(scenario) {
     // Assumption violation: each violation that touches this scenario widens doubt
     let violations = 0;
     try {
-        KEY_ASSUMPTIONS.forEach(ka => {
-            if (!ka.active && ka.ifFalse[scenario.id] !== undefined) {
-                violations++;
-            }
-        });
+        if (typeof KEY_ASSUMPTIONS !== 'undefined' && Array.isArray(KEY_ASSUMPTIONS)) {
+            KEY_ASSUMPTIONS.forEach(ka => {
+                if (!ka.active && ka.ifFalse[scenario.id] !== undefined) {
+                    violations++;
+                }
+            });
+        }
     } catch (e) { }
     beliefFactor -= violations * 0.06;
 
@@ -781,7 +802,7 @@ function computeDST(scenario) {
         for (const [g, ids] of Object.entries(groupMap2)) {
             if (ids.includes(scenario.id)) { sg = g; break; }
         }
-        if (sg) {
+        if (sg && typeof IW_INDICATORS !== 'undefined' && Array.isArray(IW_INDICATORS)) {
             const triggeredCount = IW_INDICATORS.filter(
                 iw => iw.group === sg && iw.status === 'triggered'
             ).length;
@@ -792,10 +813,12 @@ function computeDST(scenario) {
 
     // Open gaps widen plausibility (more unknown = wider uncertainty band)
     try {
-        const openGaps = INTEL_GAPS.filter(g =>
-            g.status === 'OPEN' && g.relatedScenarios.includes(scenario.id)
-        ).length;
-        plausFactor += openGaps * 0.04;
+        if (typeof INTEL_GAPS !== 'undefined' && Array.isArray(INTEL_GAPS)) {
+            const openGaps = INTEL_GAPS.filter(g =>
+                g.status === 'OPEN' && g.relatedScenarios.includes(scenario.id)
+            ).length;
+            plausFactor += openGaps * 0.04;
+        }
     } catch (e) { }
 
     plausFactor = Math.min(1.55, Math.max(1.05, plausFactor));
@@ -858,7 +881,12 @@ function renderScenarios() {
         </div>`;
 
         if (el) el.insertAdjacentHTML('beforeend', html);
-        if (topScenariosEl && top3Ids.includes(s.id)) topScenariosEl.insertAdjacentHTML('beforeend', html);
+        if (topScenariosEl && top3Ids.includes(s.id)) {
+            const htmlTop = html
+                .replace(`id="cb-${s.id}"`, `id="cb-${s.id}-top"`)
+                .replace(`toggleChallenge('${s.id}')`, `toggleChallenge('${s.id}-top')`);
+            topScenariosEl.insertAdjacentHTML('beforeend', htmlTop);
+        }
     });
 }
 
@@ -942,6 +970,10 @@ function renderUnverified() {
   </div>`).join('');
 }
 function buildAnalystSummary() {
+    // Guard: abort if data not yet loaded
+    if (typeof IW_INDICATORS === 'undefined' || !Array.isArray(IW_INDICATORS)) return '';
+    if (typeof scenarios === 'undefined' || !Array.isArray(scenarios)) return '';
+
     // --- Gather live state ---
     const triggered = IW_INDICATORS.filter(i => i.status === 'triggered');
     const watched = IW_INDICATORS.filter(i => i.status === 'watch');
@@ -1031,7 +1063,8 @@ function renderAnalystSummary() {
     }
 }
 function renderSignalNoise() {
-    if (typeof VERIFIED_NEWS === 'undefined' || typeof PROPAGANDA_NEWS === 'undefined') return;
+    if (typeof VERIFIED_NEWS === 'undefined' || !Array.isArray(VERIFIED_NEWS)) return;
+    if (typeof PROPAGANDA_NEWS === 'undefined' || !Array.isArray(PROPAGANDA_NEWS)) return;
     const highCred = VERIFIED_NEWS.filter(n => n.cred >= 8).length;
     const propagandaLow = PROPAGANDA_NEWS.filter(n => n.cred < 5).length;
     const total = VERIFIED_NEWS.length + PROPAGANDA_NEWS.length;
@@ -1051,6 +1084,7 @@ function renderSignalNoise() {
 // ===== I&W =====
 const IW_CATS = ['MILITER', 'DIPLOMATIK', 'EKONOMI', 'INTELIJEN'];
 function renderIW() {
+    if (typeof IW_INDICATORS === 'undefined' || !Array.isArray(IW_INDICATORS)) return;
     document.getElementById('iw-table').innerHTML = IW_CATS.map(cat => {
         const rows = IW_INDICATORS.filter(i => i.cat === cat);
         return `<div class="iw-category">
@@ -1136,7 +1170,11 @@ function renderRedTeam() {
     <div class="payoff-label col">${cols[0]}</div>
     <div class="payoff-label col">${cols[1]}</div>`;
     d.cells.forEach((c, i) => {
-        if (i % 2 === 0) html += `<div class="payoff-label row">${rows[Math.floor(i / 2)]}</div>`;
+        if (i % 2 === 0) {
+            const rIdx = Math.floor(i / 2);
+            const rowLabel = rows[rIdx] || `R-${rIdx + 1}`;
+            html += `<div class="payoff-label row">${rowLabel}</div>`;
+        }
         const va = parseFloat(c.rv), vb = parseFloat(c.cv);
         html += `<div class="payoff-cell${c.isNash ? ' nash' : ''}">
       <div class="payoff-val ${va > 0 ? 'pos' : va < 0 ? 'neg' : 'neu'}">A:${c.rv}</div>
@@ -1549,11 +1587,12 @@ function generatePDFReport() {
 
         // probability fill bar
         const barW = Math.round((s.current / 100) * 72);
-        doc.setFillColor(...gc, 0.6);
-        doc.setFillColor(gc[0], gc[1], gc[2]);
-        doc.setGState(doc.GState({ opacity: 0.25 }));
+        // Simulate ~35% opacity over dark background (15, 25, 40)
+        const sr = Math.round(gc[0] * 0.35 + 15 * 0.65);
+        const sg = Math.round(gc[1] * 0.35 + 25 * 0.65);
+        const sb = Math.round(gc[2] * 0.35 + 40 * 0.65);
+        doc.setFillColor(sr, sg, sb);
         doc.rect(col + 2, y - 3, barW, 9, 'F');
-        doc.setGState(doc.GState({ opacity: 1 }));
 
         // text
         doc.setTextColor(220, 240, 255);

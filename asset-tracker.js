@@ -7,7 +7,7 @@ const AssetTracker = (() => {
     'use strict';
 
     // ── CONFIGURATION ──────────────────────────────────────────────────
-    const ADSB_PROXY = '/api/adsb-mil'; // Proxied via serve.ps1
+    const ADSB_PROXY = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL.replace(/\/api$/, '') + '/api/adsb-mil' : '/api/adsb-mil'; // Proxied via proxy-server.ps1
     const ADSB_DIRECT = 'https://api.adsb.lol/v2/mil'; // Fallback direct
     const ADSB_POLL_INTERVAL = 15000; // 15 sec
     const AIS_WS_URL = 'wss://stream.aisstream.io/v0/stream';
@@ -246,7 +246,7 @@ const AssetTracker = (() => {
 
     let aisWsFailCount = 0;
     const AIS_WS_MAX_FAILURES = 4;
-    const AIS_POLL_ENDPOINT = '/api/ais-poll';
+    const AIS_POLL_ENDPOINT = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL.replace(/\/api$/, '') + '/api/ais-poll' : '/api/ais-poll';
     const AIS_POLL_INTERVAL = 5000; // 5 seconds for faster updates
     let aisPollTimer = null;
     let aisMode = 'http'; // Force HTTP mode — browser WS blocked (code 1006) from http:// origins
@@ -606,10 +606,5 @@ const AssetTracker = (() => {
     return { start, stop, getStats, getLiveAssets };
 })();
 
-// Auto-start when DOM is ready & map is initialized
-document.addEventListener('DOMContentLoaded', () => {
-    // Delay start to let map.js initialize first
-    setTimeout(() => {
-        AssetTracker.start();
-    }, 3000);
-});
+// Start is now explicitly called by app-logic.js AFTER initMap() completes.
+// This prevents race conditions where the map isn't ready.

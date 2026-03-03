@@ -38,7 +38,12 @@ const ASSET_SVG = {
 // (Static MILITARY_ASSETS removed — all markers are now LIVE real-time from ADS-B / AIS)
 
 function initMap() {
-    if (leafletMap || typeof L === 'undefined') return;
+    if (leafletMap || typeof L === 'undefined') {
+        if (leafletMap && typeof leafletMap.invalidateSize === 'function') {
+            leafletMap.invalidateSize();
+        }
+        return;
+    }
 
     const container = document.getElementById('satellite-map');
     if (!container) return;
@@ -127,6 +132,10 @@ window.toggleAnalysisPanel = function () {
         const btn = document.getElementById('btn-analysis');
         if (btn) {
             btn.textContent = overlay.classList.contains('hidden') ? '▶ ANALYSIS PANEL' : '◀ HIDE ANALYSIS';
+        }
+        // Pastikan Leaflet diresize setelah animasi panel selesai agar tiles map tidak abu-abu/offset
+        if (leafletMap && typeof leafletMap.invalidateSize === 'function') {
+            setTimeout(() => { leafletMap.invalidateSize(); }, 350);
         }
     }
 };
@@ -390,7 +399,7 @@ window.addOrUpdateLiveAsset = function (asset) {
             // Prune old trail segments (keep max 200)
             while (existing.trailSegments.length > 200) {
                 const old = existing.trailSegments.shift();
-                targetLayer.removeLayer(old);
+                if (old) old.remove(); // .remove() is safer for garbage collection than removeLayer()
             }
             existing.lastTrailLen = currentTrailLen;
         }
@@ -437,8 +446,10 @@ window.removeLiveAsset = function (id) {
 
     const layer = ref.source === 'ais' ? liveAisLayer : liveAdsbLayer;
     if (layer) {
-        if (ref.marker) layer.removeLayer(ref.marker);
-        ref.trailSegments.forEach(seg => layer.removeLayer(seg));
+        if (ref.marker) ref.marker.remove();
+        ref.trailSegments.forEach(seg => {
+            if (seg) seg.remove();
+        });
     }
     delete liveMarkerRefs[id];
 };

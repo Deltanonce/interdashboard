@@ -475,12 +475,12 @@
     </div>
   </div>
 
-  <!-- Scripts -->
-  <script src="config.js?v=50"></script>
-  <script src="map.js?v=50" defer></script>
-  <script src="asset-tracker.js?v=50" defer></script>
-  <script src="app.js?v=50" defer></script>
-  <script src="app-logic.js?v=50" defer></script>
+  <!-- Scripts — NO defer: execution order matters (app-logic.js depends on app.js) -->
+  <script src="config.js?v=51"></script>
+  <script src="map.js?v=51"></script>
+  <script src="asset-tracker.js?v=51"></script>
+  <script src="app.js?v=51"></script>
+  <script src="app-logic.js?v=51"></script>
 </body>
 
 </html>
