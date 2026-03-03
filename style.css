@@ -4522,4 +4522,258 @@ body {
   to {
     stroke-dashoffset: 0;
   }
+
+}
+/* ============================================================
+   INTEL DASHBOARD — STYLE PATCH
+   Append this block to the END of style.css
+   Fixes: missing .wv-pill-val, .wv-analysis-content, AIS dot,
+          accordion-container, and various UI polish issues.
+   ============================================================ */
+
+/* FIX: .wv-pill-val was referenced in HTML but had no CSS rule
+   (CSS only had .wv-pill-count which was never used in HTML) */
+.wv-pill-val {
+  font-size: 9px;
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  min-width: 14px;
+  text-align: center;
+  font-family: var(--font-data);
+  color: var(--text-primary);
+}
+
+/* FIX: .wv-analysis-content had no layout styles — inner panel
+   was collapsing without defined flex/overflow behavior */
+.wv-analysis-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-bright) transparent;
+}
+
+.wv-analysis-content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.wv-analysis-content::-webkit-scrollbar-thumb {
+  background: var(--border-bright);
+  border-radius: 2px;
+}
+
+/* FIX: .accordion-container needed display block to contain details elements */
+.accordion-container {
+  display: block;
+  width: 100%;
+}
+
+/* FIX: AIS status dot in toolbar — needs same animation as HUD dot */
+#toolbar-ais-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-red);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+#toolbar-ais-dot.connected {
+  background: var(--accent-green);
+  box-shadow: 0 0 6px rgba(0, 240, 128, 0.6);
+  animation: dotPulse 2s ease infinite;
+}
+
+/* FIX: Boot sequence hidden transition — was opacity 0 but display still block */
+.boot-sequence.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s ease-out;
+}
+
+/* FIX: wv-hud-left/right panels — top-scenarios-list scenario items
+   were rendering too large inside compact HUD panel */
+#top-scenarios-list .scenario-item {
+  padding: 5px 8px;
+}
+
+#top-scenarios-list .scenario-name {
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+}
+
+#top-scenarios-list .scenario-prob {
+  font-size: 12px;
+  min-width: 38px;
+}
+
+#top-scenarios-list .scenario-prob .sparkline-wrap {
+  display: none; /* Hide sparklines in compact top-3 panel */
+}
+
+#top-scenarios-list .dst-row {
+  display: none; /* Hide DST row in compact panel */
+}
+
+#top-scenarios-list .scenario-footer {
+  display: none; /* Hide tags/confidence in compact panel */
+}
+
+#top-scenarios-list .btn-challenge,
+#top-scenarios-list .challenge-box {
+  display: none; /* Hide challenge buttons in compact panel */
+}
+
+/* FIX: Analysis overlay scrollbar consistency */
+.wv-analysis-overlay {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-bright) transparent;
+}
+
+.wv-analysis-overlay::-webkit-scrollbar {
+  width: 4px;
+}
+
+.wv-analysis-overlay::-webkit-scrollbar-thumb {
+  background: var(--border-bright);
+  border-radius: 2px;
+}
+
+/* FIX: Details summary marker override for webkit */
+details > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* FIX: acc-body overflow for wide tables (ACH matrix) */
+.acc-body {
+  overflow-x: auto;
+}
+
+/* FIX: iw-row grid was breaking on narrow analysis panel */
+@media (max-width: 750px) {
+  .iw-row {
+    grid-template-columns: 24px 60px 1fr 70px 50px 24px;
+    font-size: 10px;
+  }
+}
+
+/* FIX: depth-grid-2 / depth-grid-3 collapse inside analysis panel */
+@media (max-width: 700px) {
+  .depth-grid-2,
+  .depth-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .redteam-layout,
+  .netassess-layout,
+  .sigint-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .cone-track {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* POLISH: Smooth overlay transition to prevent jarring map resize */
+.wv-analysis-overlay {
+  will-change: transform;
+}
+
+/* POLISH: HUD panel text shouldn't overflow on small viewports */
+.wv-hud-left .scenario-name,
+.wv-hud-right .scenario-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* POLISH: Boot bar neon glow */
+.boot-bar {
+  box-shadow: 0 0 8px var(--accent-cyan), 0 0 16px rgba(0, 212, 255, 0.3);
+}
+
+/* POLISH: Loading spinner glow */
+.loading-spinner {
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.4), inset 0 0 10px rgba(0, 212, 255, 0.1);
+}
+
+/* POLISH: Refresh button loading animation */
+.wv-btn-refresh.loading {
+  opacity: 0.6;
+  pointer-events: none;
+  position: relative;
+}
+
+.wv-btn-refresh.loading::after {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--accent-cyan);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* POLISH: Vessel icon HUD label readability */
+.wv-vessel-label {
+  pointer-events: none;
+  text-shadow:
+    1px 1px 0 #000,
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    0 0 6px rgba(0, 0, 0, 0.8);
+}
+
+/* POLISH: Country label legibility on satellite imagery */
+.country-label-icon span {
+  text-shadow:
+    0 0 8px rgba(0, 0, 0, 0.9),
+    0 0 4px rgba(0, 0, 0, 1),
+    1px 1px 2px rgba(0, 0, 0, 1);
+  letter-spacing: 4px;
+  font-weight: 700;
+}
+
+/* POLISH: Gap item cursor feedback */
+.gap-item {
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.gap-item:active {
+  transform: scale(0.99);
+}
+
+/* POLISH: Scenario bar animation */
+.bar-current {
+  transition: width 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* POLISH: News item hover — subtle slide */
+.news-item {
+  transition: transform 0.15s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+/* POLISH: wv-panel hover glow */
+.wv-panel {
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.wv-panel:hover {
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.08);
 }
