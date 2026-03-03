@@ -3,7 +3,7 @@
 let scenarios = (typeof SCENARIOS !== 'undefined') ? SCENARIOS.map(s => ({ ...s })) : [];
 let currentThreatLevel = 4, refreshCount = 0, countdownSeconds = 300;
 let countdownTimer = null, isLoading = false;
-let _sparkCache = new Map(), _sparkCacheLen = 0; // Sparkline cache store
+let _sparkCache = new Map(), _sparkCacheLen = 0;
 let radarChart = null, currentPerspective = 'iran';
 let activeFeedFilter = 'all', credFilterOn = false, uvVisible = false;
 let lastRedPhoneTime = 0;
@@ -44,7 +44,7 @@ function initPanelStates() {
     });
 }
 
-// Timers for memory management
+// Timers
 let masterClockTimer = null;
 let liveNewsTimer = null;
 let newsInjectTimer = null;
@@ -52,25 +52,19 @@ let bootFailsafeTimer = null;
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
-    // Guard: ensure app.js data is available before recomputing
     if (typeof scenarios !== 'undefined' && Array.isArray(scenarios)) {
         scenarios = scenarios.map(s => ({ ...s, base: s.base ?? s.current }));
         if (typeof recomputeAllCurrents === 'function') recomputeAllCurrents();
     } else {
-        console.error('[INIT] FATAL: scenarios not defined — app.js may not have loaded before app-logic.js');
+        console.error('[INIT] FATAL: scenarios not defined');
     }
 
     runBootSequence().catch(e => { });
-    // 15-second hard failsafe: force-hide overlay no matter what
-    if (bootFailsafeTimer) clearTimeout(bootFailsafeTimer);
 
-    // UI Event initialization moved to the bottom of the file for reliability
-    // (See: FIX KATEGORI 1: UI EVENT BINDING)
-
-    // CSP Compliant Font Load (Replacing inline onload)
     const fontLink = document.getElementById('font-link');
     if (fontLink) fontLink.media = 'all';
 
+    if (bootFailsafeTimer) clearTimeout(bootFailsafeTimer);
     bootFailsafeTimer = setTimeout(() => {
         hideLoadingOverlay();
         const bs = document.getElementById('boot-sequence');
@@ -85,7 +79,7 @@ async function runBootSequence() {
         'BYPASSING PROXY FIREWALLS...',
         'CONNECTING TO SATELLITE FEED (VANDENBERG AFB)...',
         'LINK SUCCESSFUL.',
-        'LOADING INTEL DASHBOARD v3.0...'
+        'LOADING INTEL DASHBOARD v4.0...'
     ];
     const logEl = document.getElementById('boot-log');
     const barEl = document.getElementById('boot-bar');
@@ -96,15 +90,14 @@ async function runBootSequence() {
         line.textContent = '> ' + lines[i];
         logEl.appendChild(line);
         barEl.style.width = ((i + 1) / lines.length * 100) + '%';
-        await sleep(300 + Math.random() * 400); // Random delay 0.3s - 0.7s per line
+        await sleep(300 + Math.random() * 400);
     }
 
     await sleep(400);
     const seq = document.getElementById('boot-sequence');
     if (seq) seq.classList.add('hidden');
 
-    // Now run normal init safely
-    try { initTabs(); } catch (e) { }
+    // FIX 1: initTabs() was undefined — removed call, initTabEvents() handles this at bottom
     try {
         document.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -125,15 +118,14 @@ async function runBootSequence() {
         });
         initPanelStates();
     } catch (e) { }
+
     try {
         updateClock();
         if (masterClockTimer) clearInterval(masterClockTimer);
         masterClockTimer = setInterval(updateClock, 1000);
     } catch (e) { }
 
-    // startCountdown() dihilangkan karena dipanggil via simulateRefresh di akhir
     try { initMap(); } catch (e) { }
-    // OPTIMIZATION: Start telemetry explicitly AFTER map is ready, preventing race conditions
     try { if (typeof AssetTracker !== 'undefined') AssetTracker.start(); } catch (e) { }
     try { initRadarChart(); } catch (e) { }
     try { computeIW(); renderIW(); } catch (e) { }
@@ -161,11 +153,10 @@ async function runBootSequence() {
         const hasUnverified = typeof LIVE_UNVERIFIED_POOL !== 'undefined' && LIVE_UNVERIFIED_POOL.length > 0;
 
         if (hasVerified || hasPropaganda || hasUnverified) {
-            const delay = Math.floor(Math.random() * 10000) + 8000; // 8s-18s
+            const delay = Math.floor(Math.random() * 10000) + 8000;
             if (newsInjectTimer) clearTimeout(newsInjectTimer);
             newsInjectTimer = setTimeout(() => {
                 const pools = [];
-                // Weighting so verified is more common
                 if (hasVerified) pools.push({ pool: LIVE_NEWS_POOL, type: 'verified' }, { pool: LIVE_NEWS_POOL, type: 'verified' });
                 if (hasPropaganda) pools.push({ pool: LIVE_PROPAGANDA_POOL, type: 'propaganda' });
                 if (hasUnverified) pools.push({ pool: LIVE_UNVERIFIED_POOL, type: 'unverified' });
@@ -203,26 +194,22 @@ async function runBootSequence() {
     }
     try { startLiveNewsEngine(); } catch (e) { }
 
-    simulateRefresh(true).catch(e => {
-        hideLoadingOverlay();
-    });
+    simulateRefresh(true).catch(e => { hideLoadingOverlay(); });
 }
 
 function hideLoadingOverlay() {
     try { document.getElementById('loading-overlay').classList.add('hidden'); } catch (e) { }
 }
 
-// ===== EVENT INIT FUNCTIONS (CSP Compliant) =====
-
-// Redundant initTabEvents removed. Moved to consolidated initialization at bottom.
-
 // ===== CLOCK =====
 function updateClock() {
     const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000, wib = new Date(utc + 7 * 3600000);
     const p = n => String(n).padStart(2, '0');
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-    document.getElementById('clock-display').textContent = `${p(wib.getHours())}:${p(wib.getMinutes())}:${p(wib.getSeconds())} WIB`;
-    document.getElementById('date-display').textContent = `${p(wib.getDate())} ${months[wib.getMonth()]} ${wib.getFullYear()}`;
+    const clockEl = document.getElementById('clock-display');
+    const dateEl = document.getElementById('date-display');
+    if (clockEl) clockEl.textContent = `${p(wib.getHours())}:${p(wib.getMinutes())}:${p(wib.getSeconds())} WIB`;
+    if (dateEl) dateEl.textContent = `${p(wib.getDate())} ${months[wib.getMonth()]} ${wib.getFullYear()}`;
 }
 
 // ===== COUNTDOWN =====
@@ -237,7 +224,8 @@ function startCountdown() {
             if (!isLoading) simulateRefresh(false);
         }
         const m = Math.floor(countdownSeconds / 60), s = countdownSeconds % 60;
-        document.getElementById('countdown-display').textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        const el = document.getElementById('countdown-display');
+        if (el) el.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     }, 1000);
 }
 function triggerRefresh() { if (!isLoading) { clearInterval(countdownTimer); simulateRefresh(false); } }
@@ -245,22 +233,39 @@ function triggerRefresh() { if (!isLoading) { clearInterval(countdownTimer); sim
 // ===== SIMULATE REFRESH =====
 async function simulateRefresh(isInitial) {
     isLoading = true;
-    const btn = document.getElementById('refresh-btn'); btn.classList.add('loading');
+    const btn = document.getElementById('refresh-btn');
+    if (btn) btn.classList.add('loading');
     const overlay = document.getElementById('loading-overlay');
-    const ltxt = document.getElementById('loading-text'), lsteps = document.getElementById('loading-steps');
-    overlay.classList.remove('hidden'); lsteps.innerHTML = '';
-    const steps = ['KONEKSI AMAN TERBENTUK...', 'WEB SEARCH: REUTERS/AP/ISW/IAEA...', 'ANALISIS BERITA KONFLIK IRAN-ISRAEL-AS...', 'I&W MATRIX: EVALUASI 16 INDIKATOR...', 'ACH: SCORING COMPETING HYPOTHESES...', 'RED TEAM: KALKULASI PAYOFF MATRIX...', 'NET ASSESSMENT: RADAR UPDATE...', 'SIGINT FUSION: SIGNAL vs NOISE...', 'UPDATE 12 PROBABILITAS + CONFIDENCE...', 'FILTER PROPAGANDA & UNVERIFIED INTEL...'];
+    const ltxt = document.getElementById('loading-text');
+    const lsteps = document.getElementById('loading-steps');
+    if (overlay) overlay.classList.remove('hidden');
+    if (lsteps) lsteps.innerHTML = '';
+
+    const steps = [
+        'KONEKSI AMAN TERBENTUK...', 'WEB SEARCH: REUTERS/AP/ISW/IAEA...',
+        'ANALISIS BERITA KONFLIK IRAN-ISRAEL-AS...', 'I&W MATRIX: EVALUASI 16 INDIKATOR...',
+        'ACH: SCORING COMPETING HYPOTHESES...', 'RED TEAM: KALKULASI PAYOFF MATRIX...',
+        'NET ASSESSMENT: RADAR UPDATE...', 'SIGINT FUSION: SIGNAL vs NOISE...',
+        'UPDATE 12 PROBABILITAS + CONFIDENCE...', 'FILTER PROPAGANDA & UNVERIFIED INTEL...'
+    ];
+
     for (let i = 0; i < steps.length; i++) {
-        ltxt.textContent = isInitial ? 'MEMULAI INTEL DASHBOARD v3.0...' : 'MULTI-METHOD INTELLIGENCE UPDATE...';
-        const el = document.createElement('div'); el.className = 'loading-step step-active'; el.textContent = `▸ ${steps[i]}`; lsteps.appendChild(el);
-        await sleep(isInitial ? 220 : 130);
-        el.className = 'loading-step step-done'; el.textContent = `✓ ${steps[i].replace('...', '').trim()}`;
+        if (ltxt) ltxt.textContent = isInitial ? 'MEMULAI INTEL DASHBOARD v4.0...' : 'MULTI-METHOD INTELLIGENCE UPDATE...';
+        if (lsteps) {
+            const el = document.createElement('div');
+            el.className = 'loading-step step-active';
+            el.textContent = `▸ ${steps[i]}`;
+            lsteps.appendChild(el);
+            await sleep(isInitial ? 220 : 130);
+            el.className = 'loading-step step-done';
+            el.textContent = `✓ ${steps[i].replace('...', '').trim()}`;
+        }
     }
+
     try {
         applyProbabilityUpdate();
         renderAll();
 
-        // --- RED PHONE TRIGGER LOGIC ---
         if (!isInitial) {
             const RPCOOLDOWN = 28 * 60 * 1000;
             const criticalSpike = scenarios.find(s =>
@@ -271,10 +276,12 @@ async function simulateRefresh(isInitial) {
             );
             if (criticalSpike && (Date.now() - lastRedPhoneTime > RPCOOLDOWN)) {
                 lastRedPhoneTime = Date.now();
-                document.getElementById('rp-message').innerHTML =
+                const rpMsg = document.getElementById('rp-message');
+                const rpModal = document.getElementById('red-phone-modal');
+                if (rpMsg) rpMsg.innerHTML =
                     `Peringatan Darurat: Lonjakan tajam pada skenario <strong>${criticalSpike.name}</strong> (+${(criticalSpike.current - criticalSpike.baseline).toFixed(1)}%).<br><br>
                     Sistem mendeteksi pergeseran probabilitas kritis yang memerlukan perhatian segera.`;
-                document.getElementById('red-phone-modal').classList.remove('hidden');
+                if (rpModal) rpModal.classList.remove('hidden');
             }
         }
     } catch (e) {
@@ -284,25 +291,24 @@ async function simulateRefresh(isInitial) {
     try {
         await sleep(250);
         hideLoadingOverlay();
-        // Re-init map AFTER overlay hides so SVG renders into visible container
         try { initMap(); } catch (e) { console.error('initMap post-load:', e); }
-        try {
-            btn.classList.remove('loading');
-        } catch (e) { }
+        try { if (btn) btn.classList.remove('loading'); } catch (e) { }
         isLoading = false;
         refreshCount++;
         try {
-            document.getElementById('refresh-count').textContent = refreshCount;
+            const rcEl = document.getElementById('refresh-count');
+            if (rcEl) rcEl.textContent = refreshCount;
             const now = new Date(), wib = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 7 * 3600000);
             const p = n => String(n).padStart(2, '0');
             const ts = `${p(wib.getHours())}:${p(wib.getMinutes())}`;
-            document.getElementById('last-update').textContent = ts;
-            document.getElementById('analysis-time').textContent = `${ts} WIB`;
+            const luEl = document.getElementById('last-update');
+            const atEl = document.getElementById('analysis-time');
+            if (luEl) luEl.textContent = ts;
+            if (atEl) atEl.textContent = `${ts} WIB`;
         } catch (e) { }
     } finally {
-        // ALWAYS restart the countdown, even if rendering errors out
         try { startCountdown(); } catch (e) { }
-        isLoading = false; // ensure unlock
+        isLoading = false;
     }
 }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -312,28 +318,19 @@ function computeIW() {
     if (typeof IW_INDICATORS === 'undefined' || !Array.isArray(IW_INDICATORS)) return;
     IW_INDICATORS.forEach(i => {
         if (typeof i.val !== 'number') return;
-
-        // Compute trend vs base
         if (Math.abs(i.val - i.base) < (i.base * 0.05) || i.base === 0) i.trend = 'flat';
         else i.trend = (i.val > i.base) ? 'up' : 'down';
-
-        // Compute status based on thresholds
         if (i.inverse) {
             i.status = (i.val <= i.triggerThresh) ? 'triggered' : (i.val <= i.watchThresh) ? 'watch' : 'clear';
         } else {
             i.status = (i.val >= i.triggerThresh) ? 'triggered' : (i.val >= i.watchThresh) ? 'watch' : 'clear';
         }
-
-        // Formatting reading
         i.reading = `${i.val % 1 !== 0 ? i.val.toFixed(1) : i.val} ${i.unit}`;
     });
 }
 
 function recomputeAllCurrents() {
-    // Start from clean base for each scenario
     scenarios = scenarios.map(s => ({ ...s, current: Math.round(s.base) }));
-
-    // Layer 1: Apply assumption violation deltas
     if (typeof KEY_ASSUMPTIONS !== 'undefined') {
         KEY_ASSUMPTIONS.forEach(ka => {
             if (ka.active) return;
@@ -342,15 +339,12 @@ function recomputeAllCurrents() {
                 if (idx >= 0) {
                     scenarios[idx] = {
                         ...scenarios[idx],
-                        current: Math.round(Math.min(98, Math.max(2,
-                            scenarios[idx].current + delta)))
+                        current: Math.round(Math.min(98, Math.max(2, scenarios[idx].current + delta)))
                     };
                 }
             });
         });
     }
-
-    // Layer 2: Apply closed gap boosts on top of assumption-adjusted values
     if (typeof INTEL_GAPS !== 'undefined') {
         INTEL_GAPS.forEach(gap => {
             if (gap.status !== 'CLOSED') return;
@@ -359,8 +353,7 @@ function recomputeAllCurrents() {
                 if (idx >= 0) {
                     scenarios[idx] = {
                         ...scenarios[idx],
-                        current: Math.round(Math.min(98, Math.max(2,
-                            scenarios[idx].current + delta)))
+                        current: Math.round(Math.min(98, Math.max(2, scenarios[idx].current + delta)))
                     };
                 }
             });
@@ -369,33 +362,33 @@ function recomputeAllCurrents() {
 }
 
 function applyProbabilityUpdate() {
-    // Add noise to IW values
     if (typeof IW_INDICATORS !== 'undefined') {
         IW_INDICATORS.forEach(i => {
             if (typeof i.val === 'number' && typeof i.triggerThresh === 'number' && typeof i.base === 'number') {
-                const maxDelta = Math.abs(i.triggerThresh - i.base) * 0.3; // 30% volatility max
+                const maxDelta = Math.abs(i.triggerThresh - i.base) * 0.3;
                 const iwDiff = i.val - i.base;
                 const iwRev = -iwDiff * 0.08;
                 const shift = (Math.random() - 0.5) * maxDelta;
-                i.val = Math.max(0, i.val + iwRev + shift); // ensure no negative
+                i.val = Math.max(0, i.val + iwRev + shift);
             }
         });
     }
     computeIW();
 
-    const iwT = (typeof IW_INDICATORS !== 'undefined' && Array.isArray(IW_INDICATORS)) ? IW_INDICATORS.filter(i => i.status === 'triggered').length : 0;
-    const mul = 1 + iwT * 0.02; // I&W multiplier
+    const iwT = (typeof IW_INDICATORS !== 'undefined' && Array.isArray(IW_INDICATORS))
+        ? IW_INDICATORS.filter(i => i.status === 'triggered').length : 0;
+    const mul = 1 + iwT * 0.02;
+
     scenarios = scenarios.map(s => {
         const diff = s.base - s.baseline, rev = -diff * 0.12, noise = (Math.random() - 0.5) * 6 * mul;
-        // Clamp explicitly to 3-97 directly on the base
         const newBase = s.base + rev + noise;
         return { ...s, base: Math.round(Math.min(97, Math.max(3, newBase))) };
     });
 
-    // Recompute s.current from base + all active modifiers
     recomputeAllCurrents();
     updateThreatLevel();
 }
+
 function computeConf(s) {
     const d = Math.abs(s.current - s.baseline);
     if (s.confBase === 'spec') return 'spec';
@@ -404,33 +397,25 @@ function computeConf(s) {
     return 'spec';
 }
 const CLBL = { high: 'HIGH ▲', med: 'MED ◆', low: 'LOW ▼', spec: 'SPEKULATIF' };
+
 function updateThreatLevel() {
     if (!Array.isArray(scenarios)) return;
+    if (typeof IW_INDICATORS === 'undefined' || !Array.isArray(IW_INDICATORS)) return;
+
     const f = id => {
         const s = scenarios.find(sc => sc.id === id);
         return s ? s.current : 0;
     };
 
-    if (typeof IW_INDICATORS === 'undefined' || !Array.isArray(IW_INDICATORS)) return;
     const iwT = IW_INDICATORS.filter(i => i.status === 'triggered').length;
     const iwW = IW_INDICATORS.filter(i => i.status === 'watch').length;
 
-    // Cluster 1: Military kinetic scenarios
     const milScore = f('S4') * 0.35 + f('S5') * 0.30 + f('S7') * 0.20 + f('S6') * 0.15;
-
-    // Cluster 2: Nuclear/extreme scenarios — S12 now contributes to threat level
     const nucScore = f('S12') * 0.50 + f('S3') * 0.30 + f('S11') * 0.20;
-
-    // Cluster 3: Economic pressure scenarios
     const econScore = f('S9') * 0.50 + f('S8') * 0.30 + f('S10') * 0.20;
-
-    // Composite: military 45%, nuclear 35%, economic 20%
     const composite = milScore * 0.45 + nucScore * 0.35 + econScore * 0.20;
 
-    const sc = Math.min(100, Math.round(
-        composite * 1.3 + iwT * 2.0 + iwW * 0.6
-    ));
-
+    const sc = Math.min(100, Math.round(composite * 1.3 + iwT * 2.0 + iwW * 0.6));
     currentThreatLevel = sc >= 80 ? 4 : sc >= 60 ? 3 : sc >= 40 ? 2 : sc >= 20 ? 1 : 0;
 }
 
@@ -439,8 +424,7 @@ function toggleAssumption(id) {
     const ka = KEY_ASSUMPTIONS.find(k => k.id === id);
     if (!ka) return;
     ka.active = !ka.active;
-
-    recomputeAllCurrents();  // <-- replaces applyAssumptionShifts()
+    recomputeAllCurrents();
     updateThreatLevel();
     renderAssumptions();
     renderScenarios();
@@ -456,10 +440,10 @@ function renderAssumptions() {
 
     const violatedCount = KEY_ASSUMPTIONS.filter(k => !k.active).length;
     const badge = document.getElementById('assumptions-violated-count');
-    if (badge) badge.textContent = violatedCount > 0
-        ? `${violatedCount} DILANGGAR` : 'SEMUA AKTIF';
-    if (badge) badge.style.color = violatedCount > 0
-        ? 'var(--accent-red)' : 'var(--accent-green)';
+    if (badge) {
+        badge.textContent = violatedCount > 0 ? `${violatedCount} DILANGGAR` : 'SEMUA AKTIF';
+        badge.style.color = violatedCount > 0 ? 'var(--accent-red)' : 'var(--accent-green)';
+    }
 
     el.innerHTML = KEY_ASSUMPTIONS.map(ka => {
         const violated = !ka.active;
@@ -467,56 +451,33 @@ function renderAssumptions() {
             <div class="ka-header">
                 <span class="ka-id">${ka.id}</span>
                 <label class="ka-toggle-wrap">
-                    <input type="checkbox" 
-                        class="ka-checkbox"
-                        ${ka.active ? 'checked' : ''}
+                    <input type="checkbox" class="ka-checkbox" ${ka.active ? 'checked' : ''}
                         onchange="toggleAssumption('${ka.id}')" />
-                    <span class="ka-toggle-label">
-                        ${ka.active ? 'AKTIF' : 'DILANGGAR'}
-                    </span>
+                    <span class="ka-toggle-label">${ka.active ? 'AKTIF' : 'DILANGGAR'}</span>
                 </label>
             </div>
             <div class="ka-text ${violated ? 'ka-text-violated' : ''}">${ka.text}</div>
-            ${violated ? `<div class="ka-impact-hint">
-                Skenario terpengaruh: ${Object.keys(ka.ifFalse).join(', ')}
-            </div>` : ''}
+            ${violated ? `<div class="ka-impact-hint">Skenario terpengaruh: ${Object.keys(ka.ifFalse).join(', ')}</div>` : ''}
         </div>`;
     }).join('');
 }
 
 function saveSnapshot() {
     if (typeof SNAPSHOT_HISTORY === 'undefined') return;
-
     const now = new Date();
-    const timeLabel = now.toLocaleTimeString('id-ID', {
-        hour: '2-digit', minute: '2-digit', second: '2-digit'
-    });
+    const timeLabel = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const snap = { time: timeLabel, threatLevel: currentThreatLevel || 0, probabilities: {} };
 
-    const snap = {
-        time: timeLabel,
-        threatLevel: currentThreatLevel || 0,
-        probabilities: {}
-    };
-
-    // Pastikan tidak ada probabilitas yang tumpang tindih aneh, clamp 0-100
-    scenarios.forEach(s => {
-        s.current = Math.max(0, Math.min(100, s.current));
-    });
-
-    scenarios.forEach(s => {
-        snap.probabilities[s.id] = Math.round(s.current);
-    });
+    scenarios.forEach(s => { s.current = Math.max(0, Math.min(100, s.current)); });
+    scenarios.forEach(s => { snap.probabilities[s.id] = Math.round(s.current); });
 
     SNAPSHOT_HISTORY.push(snap);
-    _sparkCache.clear(); // force rebuild setelah snapshot baru
-    if (SNAPSHOT_HISTORY.length > MAX_SNAPSHOTS) {
-        SNAPSHOT_HISTORY.shift(); // remove oldest
-    }
+    _sparkCache.clear();
+    if (SNAPSHOT_HISTORY.length > MAX_SNAPSHOTS) SNAPSHOT_HISTORY.shift();
 
     renderSnapshotPanel();
-    renderScenarios(); // re-render to show updated sparklines
+    renderScenarios();
 
-    // Flash feedback on button
     const btn = document.getElementById('snapshot-btn');
     if (btn) {
         btn.textContent = '✓ TERSIMPAN';
@@ -530,19 +491,15 @@ function saveSnapshot() {
     }
 }
 
-// Sparkline Rendering with caching
 function buildSparkline(scenarioId) {
     if (typeof SNAPSHOT_HISTORY === 'undefined' || !SNAPSHOT_HISTORY || SNAPSHOT_HISTORY.length < 2) return '';
-
-    // Invalidate hanya saat snapshot baru ditambahkan
     if (SNAPSHOT_HISTORY.length !== _sparkCacheLen) {
         _sparkCache.clear();
         _sparkCacheLen = SNAPSHOT_HISTORY.length;
     }
     if (_sparkCache.has(scenarioId)) return _sparkCache.get(scenarioId);
 
-    const values = SNAPSHOT_HISTORY.map(s => s.probabilities[scenarioId] ?? null)
-        .filter(v => v !== null);
+    const values = SNAPSHOT_HISTORY.map(s => s.probabilities[scenarioId] ?? null).filter(v => v !== null);
     if (values.length < 2) return '';
 
     const w = 60, h = 18, pad = 2;
@@ -563,8 +520,7 @@ function buildSparkline(scenarioId) {
 
     const result = `<span class="sparkline-wrap" title="Tren ${values.length} snapshot">
         <svg width="${w}" height="${h}" class="sparkline-svg">
-            <polyline points="${pts.join(' ')}"
-                fill="none" stroke="${lineColor}" stroke-width="1.5" stroke-linejoin="round"/>
+            <polyline points="${pts.join(' ')}" fill="none" stroke="${lineColor}" stroke-width="1.5" stroke-linejoin="round"/>
             <circle cx="${lx}" cy="${ly}" r="2" fill="${lineColor}"/>
         </svg>
         <span class="spark-arrow" style="color:${lineColor}">${arrow}</span>
@@ -576,22 +532,19 @@ function buildSparkline(scenarioId) {
 
 function renderSnapshotPanel() {
     const el = document.getElementById('snapshot-list');
-    if (!el) return;
+    if (!el || typeof SNAPSHOT_HISTORY === 'undefined') return;
 
     if (SNAPSHOT_HISTORY.length === 0) {
         el.innerHTML = '<div class="snap-empty">Belum ada snapshot tersimpan.</div>';
         return;
     }
 
-    // Show newest first
     const reversed = [...SNAPSHOT_HISTORY].reverse();
     el.innerHTML = reversed.map((snap, i) => {
         const isLatest = i === 0;
         const topScenarios = Object.entries(snap.probabilities)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3)
-            .map(([id, pct]) => `<span class="snap-sc">${id}:${pct}%</span>`)
-            .join('');
+            .sort((a, b) => b[1] - a[1]).slice(0, 3)
+            .map(([id, pct]) => `<span class="snap-sc">${id}:${pct}%</span>`).join('');
         return `<div class="snap-item ${isLatest ? 'snap-latest' : ''}">
             <div class="snap-header">
                 <span class="snap-time">${isLatest ? '● ' : '○ '}${snap.time}</span>
@@ -610,12 +563,9 @@ function cycleGapStatus(id) {
     if (typeof INTEL_GAPS === 'undefined') return;
     const gap = INTEL_GAPS.find(g => g.id === id);
     if (!gap) return;
-
-    // Cycle: OPEN → PARTIAL → CLOSED → OPEN
     const cycle = { 'OPEN': 'PARTIAL', 'PARTIAL': 'CLOSED', 'CLOSED': 'OPEN' };
     gap.status = cycle[gap.status];
-
-    recomputeAllCurrents();  // <-- replaces applyGapBoosts()
+    recomputeAllCurrents();
     updateThreatLevel();
     renderGapPanel();
     renderScenarios();
@@ -638,47 +588,23 @@ function renderGapPanel() {
     const partialCount = INTEL_GAPS.filter(g => g.status === 'PARTIAL').length;
     const closedCount = INTEL_GAPS.filter(g => g.status === 'CLOSED').length;
 
-    // Update summary badge
     const badge = document.getElementById('gap-summary-badge');
     if (badge) {
         badge.textContent = `${openCount} OPEN · ${partialCount} PARTIAL · ${closedCount} CLOSED`;
         badge.style.color = openCount >= 5 ? 'var(--accent-red)'
-            : openCount >= 3 ? 'var(--accent-orange)'
-                : 'var(--accent-green)';
+            : openCount >= 3 ? 'var(--accent-orange)' : 'var(--accent-green)';
     }
 
-    const priorityColor = {
-        'KRITIS': 'var(--accent-red)',
-        'TINGGI': 'var(--accent-orange)',
-        'SEDANG': 'var(--accent-yellow)'
-    };
-
-    const statusIcon = {
-        'OPEN': '○',
-        'PARTIAL': '◑',
-        'CLOSED': '●'
-    };
-
-    const statusColor = {
-        'OPEN': 'var(--accent-red)',
-        'PARTIAL': 'var(--accent-orange)',
-        'CLOSED': 'var(--accent-green)'
-    };
+    const priorityColor = { 'KRITIS': 'var(--accent-red)', 'TINGGI': 'var(--accent-orange)', 'SEDANG': 'var(--accent-yellow)' };
+    const statusIcon = { 'OPEN': '○', 'PARTIAL': '◑', 'CLOSED': '●' };
+    const statusColor = { 'OPEN': 'var(--accent-red)', 'PARTIAL': 'var(--accent-orange)', 'CLOSED': 'var(--accent-green)' };
 
     el.innerHTML = INTEL_GAPS.map(gap => `
-        <div class="gap-item gap-${gap.status.toLowerCase()}"
-             data-gap-id="${gap.id}"
-             title="Klik untuk ubah status koleksi">
+        <div class="gap-item gap-${gap.status.toLowerCase()}" data-gap-id="${gap.id}" title="Klik untuk ubah status koleksi">
             <div class="gap-header">
                 <span class="gap-id">${gap.id}</span>
-                <span class="gap-priority" 
-                      style="color:${priorityColor[gap.priority]}">
-                    ${gap.priority}
-                </span>
-                <span class="gap-status" 
-                      style="color:${statusColor[gap.status]}">
-                    ${statusIcon[gap.status]} ${gap.status}
-                </span>
+                <span class="gap-priority" style="color:${priorityColor[gap.priority]}">${gap.priority}</span>
+                <span class="gap-status" style="color:${statusColor[gap.status]}">${statusIcon[gap.status]} ${gap.status}</span>
             </div>
             <div class="gap-question">${gap.question}</div>
             <div class="gap-footer">
@@ -691,7 +617,6 @@ function renderGapPanel() {
 
 // ===== RENDER ALL =====
 function renderAll() {
-    // Bungkus semua dengan try-catch individu agar 1 error tidak mematikan seluruh UI
     try { renderThreat(); } catch (e) { console.error('renderThreat fail:', e); }
     try { renderScenarios(); } catch (e) { console.error('renderScen fail:', e); }
     try { renderDeltaTracker(); } catch (e) { console.error('renderDelta fail:', e); }
@@ -703,8 +628,6 @@ function renderAll() {
     try { renderAssumptions(); } catch (e) { console.error('renderAssump fail:', e); }
     try { renderSnapshotPanel(); } catch (e) { console.error('renderSnap fail:', e); }
     try { renderGapPanel(); } catch (e) { console.error('renderGap fail:', e); }
-
-    // Modul tambahan yang memerlukan sinkronisasi eksplisit
     try { renderACH(); } catch (e) { console.error('renderACH fail:', e); }
     try { renderRedTeam(); } catch (e) { console.error('renderRedTeam fail:', e); }
     try { renderNetAssessTable(); } catch (e) { console.error('renderNetAssess fail:', e); }
@@ -723,155 +646,101 @@ const TCFG = [
     { label: 'KRITIS', sub: 'RISIKO ESKALASI AKTIF', color: 'var(--threat-crt)', bCount: 5, glow: '#ff1744' },
 ];
 const BCLS = ['active-low', 'active-med', 'active-wsp', 'active-hgh', 'active-crt'];
+
 function renderThreat() {
     if (currentThreatLevel < 0 || currentThreatLevel >= TCFG.length) return;
     const c = TCFG[currentThreatLevel];
     if (!c) return;
     const lbl = document.getElementById('threat-label');
-    if (lbl) {
-        lbl.textContent = c.label;
-        lbl.style.color = c.color;
-        lbl.style.textShadow = `0 0 20px ${c.glow},0 0 40px ${c.glow}66`;
-    }
+    if (lbl) { lbl.textContent = c.label; lbl.style.color = c.color; lbl.style.textShadow = `0 0 20px ${c.glow},0 0 40px ${c.glow}66`; }
     const sub = document.getElementById('threat-sub');
     if (sub) sub.textContent = c.sub;
 
     for (let i = 0; i < 5; i++) {
         const b = document.getElementById(`tb${i}`);
-        if (b) {
-            b.className = 'tbar';
-            if (i < c.bCount) b.classList.add(BCLS[i]);
-        }
+        if (b) { b.className = 'tbar'; if (i < c.bCount) b.classList.add(BCLS[i]); }
     }
-    const tids = document.querySelectorAll('.tid');
-    if (tids) {
-        tids.forEach((el, i) => { if (el) el.style.opacity = i === currentThreatLevel ? '1' : '0.35'; });
-    }
+    document.querySelectorAll('.tid').forEach((el, i) => { if (el) el.style.opacity = i === currentThreatLevel ? '1' : '0.35'; });
 }
 
 function computeDST(scenario) {
     const p = scenario.current;
-
-    // --- Belief factor ---
     let beliefFactor = 0.70;
 
-    // ACH contribution: corroborating evidence ratio per scenario group
-    // Each scenario group maps to thematically relevant ACH hypotheses
     try {
         const groupACHmap = {
-            diplomasi: [0, 2],   // H1 (Strategic Patience), H3 (Status Quo)
-            militer: [1, 4],   // H2 (Pre-emptive Strike), H5 (Multi-Front)
-            ekonomi: [2, 3],   // H3 (Status Quo), H4 (Breakout)
-            ekstrem: [3, 5]    // H4 (Nuclear Breakout), H6 (US Strike)
+            diplomasi: [0, 2], militer: [1, 4], ekonomi: [2, 3], ekstrem: [3, 5]
         };
         const relHypIndices = groupACHmap[scenario.group] || [0, 1];
         let corrobC = 0, totalCells = 0;
         if (typeof ACH_EVIDENCE !== 'undefined' && Array.isArray(ACH_EVIDENCE)) {
             ACH_EVIDENCE.forEach(ev => {
-                relHypIndices.forEach(hi => {
-                    totalCells++;
-                    if (ev.cells[hi] === 'C') corrobC++;
-                });
+                relHypIndices.forEach(hi => { totalCells++; if (ev.cells[hi] === 'C') corrobC++; });
             });
         }
         const corrobRatio = totalCells > 0 ? corrobC / totalCells : 0.5;
-        // corrobRatio > 0.6 = strong evidence → higher belief
-        // corrobRatio < 0.3 = weak evidence → lower belief
         beliefFactor += (corrobRatio - 0.5) * 0.20;
     } catch (e) { }
 
-    // I&W contribution: triggered indicators in same group boost belief
     try {
-        const groupMap = {
-            militer: ['S4', 'S5', 'S6', 'S7'],
-            nuklir: ['S3', 'S11', 'S12'],
-            ekonomi: ['S8', 'S9'],
-            diplomatik: ['S1', 'S2', 'S10']
-        };
+        const groupMap = { militer: ['S4','S5','S6','S7'], nuklir: ['S3','S11','S12'], ekonomi: ['S8','S9'], diplomatik: ['S1','S2','S10'] };
         let scenGroup = null;
-        for (const [g, ids] of Object.entries(groupMap)) {
-            if (ids.includes(scenario.id)) { scenGroup = g; break; }
-        }
+        for (const [g, ids] of Object.entries(groupMap)) { if (ids.includes(scenario.id)) { scenGroup = g; break; } }
         if (scenGroup && typeof IW_INDICATORS !== 'undefined' && Array.isArray(IW_INDICATORS)) {
             const groupToCat = { militer: 'MILITER', nuklir: 'INTELIJEN', ekonomi: 'EKONOMI', diplomatik: 'DIPLOMATIK' };
             const catName = groupToCat[scenGroup];
             if (catName) {
-                const triggered = IW_INDICATORS.filter(
-                    iw => iw.cat === catName && iw.status === 'triggered'
-                ).length;
+                const triggered = IW_INDICATORS.filter(iw => iw.cat === catName && iw.status === 'triggered').length;
                 beliefFactor += triggered * 0.04;
             }
         }
     } catch (e) { }
 
-    // Assumption violation: each violation that touches this scenario widens doubt
     let violations = 0;
     try {
         if (typeof KEY_ASSUMPTIONS !== 'undefined' && Array.isArray(KEY_ASSUMPTIONS)) {
-            KEY_ASSUMPTIONS.forEach(ka => {
-                if (!ka.active && ka.ifFalse[scenario.id] !== undefined) {
-                    violations++;
-                }
-            });
+            KEY_ASSUMPTIONS.forEach(ka => { if (!ka.active && ka.ifFalse[scenario.id] !== undefined) violations++; });
         }
     } catch (e) { }
     beliefFactor -= violations * 0.06;
 
-    // --- Plausibility factor ---
     let plausFactor = 1.30;
     try {
-        const groupMap2 = {
-            militer: ['S4', 'S5', 'S6', 'S7'],
-            nuklir: ['S3', 'S11', 'S12'],
-            ekonomi: ['S8', 'S9'],
-            diplomatik: ['S1', 'S2', 'S10']
-        };
+        const groupMap2 = { militer: ['S4','S5','S6','S7'], nuklir: ['S3','S11','S12'], ekonomi: ['S8','S9'], diplomatik: ['S1','S2','S10'] };
         let sg = null;
-        for (const [g, ids] of Object.entries(groupMap2)) {
-            if (ids.includes(scenario.id)) { sg = g; break; }
-        }
+        for (const [g, ids] of Object.entries(groupMap2)) { if (ids.includes(scenario.id)) { sg = g; break; } }
         if (sg && typeof IW_INDICATORS !== 'undefined' && Array.isArray(IW_INDICATORS)) {
             const groupToCat2 = { militer: 'MILITER', nuklir: 'INTELIJEN', ekonomi: 'EKONOMI', diplomatik: 'DIPLOMATIK' };
             const catName2 = groupToCat2[sg];
             if (catName2) {
-                const triggeredCount = IW_INDICATORS.filter(
-                    iw => iw.cat === catName2 && iw.status === 'triggered'
-                ).length;
+                const triggeredCount = IW_INDICATORS.filter(iw => iw.cat === catName2 && iw.status === 'triggered').length;
                 plausFactor -= triggeredCount * 0.05;
             }
         }
     } catch (e) { }
     plausFactor += violations * 0.08;
 
-    // Open gaps widen plausibility (more unknown = wider uncertainty band)
     try {
         if (typeof INTEL_GAPS !== 'undefined' && Array.isArray(INTEL_GAPS)) {
-            const openGaps = INTEL_GAPS.filter(g =>
-                g.status === 'OPEN' && g.relatedScenarios.includes(scenario.id)
-            ).length;
+            const openGaps = INTEL_GAPS.filter(g => g.status === 'OPEN' && g.relatedScenarios.includes(scenario.id)).length;
             plausFactor += openGaps * 0.04;
         }
     } catch (e) { }
 
     plausFactor = Math.min(1.55, Math.max(1.05, plausFactor));
-
-    // Clamp belief factor
     beliefFactor = Math.min(0.92, Math.max(0.40, beliefFactor));
 
     const belief = Math.round(Math.min(97, p * beliefFactor));
     const plausibility = Math.round(Math.min(98, p * plausFactor));
     const uncertainty = Math.max(0, plausibility - belief);
-
     return { belief, plausibility, uncertainty };
 }
 
 // ===== SCENARIOS =====
 const GRP = { diplomasi: 'group-diplomasi', militer: 'group-militer', ekonomi: 'group-ekonomi', ekstrem: 'group-ekstrem' };
+
 function renderScenarios() {
-    Object.values(GRP).forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.innerHTML = '';
-    });
+    Object.values(GRP).forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
 
     const topScenariosEl = document.getElementById('top-scenarios-list');
     if (topScenariosEl) topScenariosEl.innerHTML = '';
@@ -880,23 +749,19 @@ function renderScenarios() {
 
     scenarios.forEach(s => {
         const el = document.getElementById(GRP[s.group]);
-
         const delta = s.current - s.baseline;
         const ds = delta === 0 ? '±0%' : delta > 0 ? `+${delta}%` : `${delta}%`;
         const dc = delta > 0 ? 'pos' : delta < 0 ? 'neg' : 'neutral';
         const pc = s.group === 'militer' ? 'var(--accent-red)' : s.group === 'ekonomi' ? 'var(--accent-yellow)' : s.group === 'ekstrem' ? 'var(--accent-purple)' : 'var(--accent-cyan)';
         const conf = computeConf(s);
         const tags = s.tags.map(t => `<span class="tag ${t === 'de-eskalasi' ? 'deeskalasi' : t}">${t.toUpperCase()}</span>`).join('');
-
         const dst = computeDST(s);
         const uClass = dst.uncertainty > 25 ? 'dst-high-unc' : dst.uncertainty > 12 ? 'dst-med-unc' : 'dst-low-unc';
 
         const html = `<div class="scenario-item">
             <div class="scenario-header">
                 <div class="scenario-name">${esc(s.name)}</div>
-                <div class="scenario-prob" style="color:${pc}">${s.current}%
-                    ${buildSparkline(s.id)}
-                </div>
+                <div class="scenario-prob" style="color:${pc}">${s.current}% ${buildSparkline(s.id)}</div>
                 <div class="scenario-delta ${dc}">${ds}</div>
             </div>
             <div class="bar-container">
@@ -926,127 +791,133 @@ function renderScenarios() {
 function renderDeltaTracker() {
     const el = document.getElementById('delta-list');
     if (!el || !Array.isArray(scenarios)) return;
-    const top = scenarios.map(s => ({ ...s, delta: s.current - s.baseline, abs: Math.abs(s.current - s.baseline) })).filter(s => s.abs > 0).sort((a, b) => b.abs - a.abs).slice(0, 6);
+    const top = scenarios.map(s => ({ ...s, delta: s.current - s.baseline, abs: Math.abs(s.current - s.baseline) }))
+        .filter(s => s.abs > 0).sort((a, b) => b.abs - a.abs).slice(0, 6);
     el.innerHTML = top.length ? top.map(s => `<div class="delta-item">
-    <span class="delta-arrow ${s.delta > 0 ? 'up' : 'down'}">${s.delta > 0 ? '▲' : '▼'}</span>
-    <span class="delta-label">${esc(s.name)}</span>
-    <span class="delta-value ${s.delta > 0 ? 'pos' : 'neg'}">${s.delta > 0 ? '+' + s.delta : s.delta}%</span>
-  </div>`).join('') : '<div style="color:var(--text-dim);font-size:11px;padding:6px 0">Tidak ada perubahan dari baseline.</div>';
+        <span class="delta-arrow ${s.delta > 0 ? 'up' : 'down'}">${s.delta > 0 ? '▲' : '▼'}</span>
+        <span class="delta-label">${esc(s.name)}</span>
+        <span class="delta-value ${s.delta > 0 ? 'pos' : 'neg'}">${s.delta > 0 ? '+' + s.delta : s.delta}%</span>
+    </div>`).join('') : '<div style="color:var(--text-dim);font-size:11px;padding:6px 0">Tidak ada perubahan dari baseline.</div>';
 }
 
-// ===== SECURITY & ESCAPING =====
+// ===== SECURITY =====
 function esc(str) {
     if (str == null) return '';
     return String(str)
-        .replace(/[&<>"'`=\/]/g, s => ({
-            '&': '&amp;', '<': '&lt;', '>': '&gt;',
-            '"': '&quot;', "'": '&#39;', '/': '&#x2F;',
-            '`': '&#x60;', '=': '&#x3D;'
-        })[s])
-        // Strip zero-width & invisible unicode control characters
+        .replace(/[&<>"'`=\/]/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;', '`': '&#x60;', '=': '&#x3D;' })[s])
         .replace(/[\u200B-\u200D\uFEFF\u2028\u2029\u0000-\u001F\u007F]/g, '');
 }
 
 // ===== NEWS =====
+// FIX 2: filterFeed — was using getAttribute('onclick') which is always null now.
+// Buttons use data-feed-filter attribute, must compare against that.
 function filterFeed(f) {
     activeFeedFilter = f;
-    document.querySelectorAll('.ff-btn').forEach(b => b.classList.toggle('active', b.getAttribute('onclick').includes(`'${f}'`)));
+    document.querySelectorAll('.ff-btn').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-feed-filter') === f);
+    });
     renderNews();
 }
-function toggleCredFilter() { credFilterOn = document.getElementById('high-cred-filter').checked; renderPropaganda(); }
+
+function toggleCredFilter() {
+    const el = document.getElementById('high-cred-filter');
+    credFilterOn = el ? el.checked : false;
+    renderPropaganda();
+}
+
 function toggleUnverified() {
     uvVisible = !uvVisible;
-    document.getElementById('unverified-feed').classList.toggle('uv-hidden', !uvVisible);
-    document.getElementById('uv-toggle-btn').textContent = uvVisible ? 'SEMBUNYIKAN' : 'TAMPILKAN';
+    const feed = document.getElementById('unverified-feed');
+    const btn = document.getElementById('uv-toggle-btn');
+    if (feed) feed.classList.toggle('uv-hidden', !uvVisible);
+    if (btn) btn.textContent = uvVisible ? 'SEMBUNYIKAN' : 'TAMPILKAN';
 }
+
 function renderNews() {
     if (typeof VERIFIED_NEWS === 'undefined' || !Array.isArray(VERIFIED_NEWS)) return;
     const sorted = [...VERIFIED_NEWS].sort((a, b) => a.time - b.time);
     const filtered = activeFeedFilter === 'all' ? sorted : sorted.filter(n => n.impact === activeFeedFilter);
-    const cb = document.getElementById('feed-count'); if (cb) cb.textContent = filtered.length;
 
+    const cb = document.getElementById('feed-count');
+    if (cb) cb.textContent = filtered.length;
+
+    // FIX 3: Use cached element reference — was calling getElementById twice
     const elFeed = document.getElementById('osint-feed');
     if (!elFeed) return;
+
     const now = new Date();
-    document.getElementById('osint-feed').innerHTML = filtered.map(n => {
+    elFeed.innerHTML = filtered.map(n => {
         const itemTime = new Date(now.getTime() - n.time * 60000 + now.getTimezoneOffset() * 60000 + 7 * 3600000);
         const p = num => String(num).padStart(2, '0');
         const ts = `${p(itemTime.getHours())}:${p(itemTime.getMinutes())}`;
         const targetLink = n.link || 'https://x.com/DeItaone';
-
         return `<a href="${esc(targetLink)}" target="_blank" rel="noopener noreferrer" class="news-item ${n.impact}">
-    <div class="news-header">
-      <span class="news-time-badge">${ts} WIB</span>
-      <span class="news-impact ${n.impact}">${n.impact === 'eskalasi' ? 'ESKALASI' : n.impact === 'deeskalasi' ? 'DE-ESKALASI' : 'NETRAL'}</span>
-      <span class="intel-badge ${n.intel}">${n.intel}</span>
-      <span class="credibility-score ${n.cred >= 8 ? 'high' : n.cred >= 6 ? 'med' : 'low'}">CRED:${n.cred}/10</span>
-      <span class="news-source">${esc(n.source)}</span>
-    </div>
-    <div class="news-headline">${esc(n.headline)}</div>
-    <div class="news-analysis">${esc(n.analysis)}</div>
-  </a>`;
+            <div class="news-header">
+                <span class="news-time-badge">${ts} WIB</span>
+                <span class="news-impact ${n.impact}">${n.impact === 'eskalasi' ? 'ESKALASI' : n.impact === 'deeskalasi' ? 'DE-ESKALASI' : 'NETRAL'}</span>
+                <span class="intel-badge ${n.intel}">${n.intel}</span>
+                <span class="credibility-score ${n.cred >= 8 ? 'high' : n.cred >= 6 ? 'med' : 'low'}">CRED:${n.cred}/10</span>
+                <span class="news-source">${esc(n.source)}</span>
+            </div>
+            <div class="news-headline">${esc(n.headline)}</div>
+            <div class="news-analysis">${esc(n.analysis)}</div>
+        </a>`;
     }).join('');
 }
+
+// FIX 4: renderPropaganda — added guard for undefined PROPAGANDA_NEWS
 function renderPropaganda() {
+    if (typeof PROPAGANDA_NEWS === 'undefined' || !Array.isArray(PROPAGANDA_NEWS)) return;
     const list = credFilterOn ? PROPAGANDA_NEWS.filter(n => n.cred >= 7) : PROPAGANDA_NEWS;
-    document.getElementById('prop-count').textContent = `${PROPAGANDA_NEWS.filter(n => n.cred < 5).length} FLAGS`;
-    document.getElementById('prop-feed').innerHTML = list.map(n => `<div class="prop-item">
-    <div class="prop-item-header"><span class="prop-flag">${n.flag}</span><span class="credibility-score ${n.cred >= 8 ? 'high' : n.cred >= 6 ? 'med' : 'low'}">CRED:${n.cred}/10</span></div>
-    <div class="prop-headline">"${esc(n.headline)}" — ${esc(n.source)}</div>
-    <div class="prop-analysis">${esc(n.analysis)}</div>
-  </div>`).join('');
+    const propCount = document.getElementById('prop-count');
+    if (propCount) propCount.textContent = `${PROPAGANDA_NEWS.filter(n => n.cred < 5).length} FLAGS`;
+    const propFeed = document.getElementById('prop-feed');
+    if (!propFeed) return;
+    propFeed.innerHTML = list.map(n => `<div class="prop-item">
+        <div class="prop-item-header"><span class="prop-flag">${n.flag}</span><span class="credibility-score ${n.cred >= 8 ? 'high' : n.cred >= 6 ? 'med' : 'low'}">CRED:${n.cred}/10</span></div>
+        <div class="prop-headline">"${esc(n.headline)}" — ${esc(n.source)}</div>
+        <div class="prop-analysis">${esc(n.analysis)}</div>
+    </div>`).join('');
 }
+
+// FIX 5: renderUnverified — added guard for undefined UNVERIFIED_NEWS
 function renderUnverified() {
-    document.getElementById('unverified-feed').innerHTML = UNVERIFIED_NEWS.map(n => `<div class="uv-item">
-    <div class="uv-watermark">UNVERIFIED</div>
-    <div><span class="uv-label">${esc(n.label)}</span></div>
-    <div class="uv-headline">${esc(n.headline)}</div>
-    <div class="uv-impact">Potensi Dampak (IF valid): <strong>${esc(n.impact)}</strong></div>
-  </div>`).join('');
+    if (typeof UNVERIFIED_NEWS === 'undefined' || !Array.isArray(UNVERIFIED_NEWS)) return;
+    const el = document.getElementById('unverified-feed');
+    if (!el) return;
+    el.innerHTML = UNVERIFIED_NEWS.map(n => `<div class="uv-item">
+        <div class="uv-watermark">UNVERIFIED</div>
+        <div><span class="uv-label">${esc(n.label)}</span></div>
+        <div class="uv-headline">${esc(n.headline)}</div>
+        <div class="uv-impact">Potensi Dampak (IF valid): <strong>${esc(n.impact)}</strong></div>
+    </div>`).join('');
 }
+
 function buildAnalystSummary() {
-    // Guard: abort if data not yet loaded
     if (typeof IW_INDICATORS === 'undefined' || !Array.isArray(IW_INDICATORS)) return '';
     if (typeof scenarios === 'undefined' || !Array.isArray(scenarios)) return '';
 
-    // --- Gather live state ---
     const triggered = IW_INDICATORS.filter(i => i.status === 'triggered');
     const watched = IW_INDICATORS.filter(i => i.status === 'watch');
 
-    // Top mover: scenario with highest absolute delta from baseline
-    const topMover = scenarios
-        .map(s => ({ ...s, absDelta: Math.abs(s.current - s.baseline) }))
+    const topMover = scenarios.map(s => ({ ...s, absDelta: Math.abs(s.current - s.baseline) }))
         .sort((a, b) => b.absDelta - a.absDelta)[0];
+    const topMilitary = scenarios.filter(s => s.group === 'militer').sort((a, b) => b.current - a.current)[0];
+    const topDiplomasi = scenarios.filter(s => s.group === 'diplomasi').sort((a, b) => b.current - a.current)[0];
 
-    // Highest probability military scenario
-    const topMilitary = scenarios
-        .filter(s => s.group === 'militer')
-        .sort((a, b) => b.current - a.current)[0];
-
-    // Highest probability de-escalation scenario  
-    const topDiplomasi = scenarios
-        .filter(s => s.group === 'diplomasi')
-        .sort((a, b) => b.current - a.current)[0];
-
-    // ACH winner (hypothesis with fewest weighted inconsistencies)
     let achWinner = null;
     if (typeof ACH_HYPOTHESES !== 'undefined' && typeof ACH_EVIDENCE !== 'undefined') {
         const achScores = ACH_HYPOTHESES.map((h, hi) => {
-            const incons = ACH_EVIDENCE.reduce((sum, e) =>
-                sum + (e.cells[hi] === 'I' ? (e.weight || 1) : 0), 0);
+            const incons = ACH_EVIDENCE.reduce((sum, e) => sum + (e.cells[hi] === 'I' ? (e.weight || 1) : 0), 0);
             return { name: h.short, incons };
         });
         achWinner = achScores.reduce((a, b) => a.incons < b.incons ? a : b);
     }
 
-    // --- Threat level label ---
     const threatLabels = ['RENDAH', 'SEDANG', 'WASPADA', 'TINGGI', 'KRITIS'];
     const threatLabel = threatLabels[currentThreatLevel] || 'TIDAK DIKETAHUI';
-
-    // --- Build contextual sentences ---
     const parts = [];
 
-    // Opening: threat + IW state
     if (currentThreatLevel >= 4) {
         parts.push(`KRITIS — ${triggered.length} indikator I&W aktif (TRIGGERED) dengan ${watched.length} dalam status WATCH. Sistem berada di ambang batas eskalasi penuh.`);
     } else if (currentThreatLevel === 3) {
@@ -1057,7 +928,6 @@ function buildAnalystSummary() {
         parts.push(`Level ancaman ${threatLabel} — ${triggered.length} I&W triggered. Situasi terkendali dalam parameter pemantauan rutin.`);
     }
 
-    // Middle: top mover context
     if (topMover && topMover.absDelta >= 3) {
         const dir = topMover.current > topMover.baseline ? 'naik' : 'turun';
         const delta = topMover.current - topMover.baseline;
@@ -1065,7 +935,6 @@ function buildAnalystSummary() {
         parts.push(`Delta terbesar: skenario "${topMover.name}" ${dir} ${sign}${delta}% dari baseline — menjadi focal point perhatian analis sesi ini.`);
     }
 
-    // Middle: military vs diplomacy tension
     if (topMilitary && topDiplomasi) {
         const tension = topMilitary.current - topDiplomasi.current;
         if (tension > 20) {
@@ -1077,7 +946,6 @@ function buildAnalystSummary() {
         }
     }
 
-    // Closing: ACH recommendation
     if (achWinner) {
         parts.push(`ACH saat ini menunjuk hipotesis paling konsisten: ${achWinner.name} (${achWinner.incons} inkonsistensi berbobot). Prioritaskan collection requirement pada indikator diagnostik untuk konfirmasi.`);
     }
@@ -1091,12 +959,12 @@ function renderAnalystSummary() {
     try {
         el.textContent = buildAnalystSummary();
     } catch (e) {
-        // Graceful fallback to static summaries if something goes wrong
         if (typeof ANALYST_SUMMARIES !== 'undefined' && ANALYST_SUMMARIES.length > 0) {
             el.textContent = ANALYST_SUMMARIES[0];
         }
     }
 }
+
 function renderSignalNoise() {
     if (typeof VERIFIED_NEWS === 'undefined' || !Array.isArray(VERIFIED_NEWS)) return;
     if (typeof PROPAGANDA_NEWS === 'undefined' || !Array.isArray(PROPAGANDA_NEWS)) return;
@@ -1104,9 +972,7 @@ function renderSignalNoise() {
     const propagandaLow = PROPAGANDA_NEWS.filter(n => n.cred < 5).length;
     const total = VERIFIED_NEWS.length + PROPAGANDA_NEWS.length;
     if (total === 0) return;
-    const sig = Math.min(92, Math.max(45,
-        Math.round(((highCred * 1.4 - propagandaLow * 0.7) / total) * 100 + 42)
-    ));
+    const sig = Math.min(92, Math.max(45, Math.round(((highCred * 1.4 - propagandaLow * 0.7) / total) * 100 + 42)));
     const noise = 100 - sig;
     const snBar = document.getElementById('sn-bar');
     const snNoise = document.getElementById('sn-noise');
@@ -1120,31 +986,34 @@ function renderSignalNoise() {
 const IW_CATS = ['MILITER', 'DIPLOMATIK', 'EKONOMI', 'INTELIJEN'];
 function renderIW() {
     if (typeof IW_INDICATORS === 'undefined' || !Array.isArray(IW_INDICATORS)) return;
-    document.getElementById('iw-table').innerHTML = IW_CATS.map(cat => {
+    const iwTable = document.getElementById('iw-table');
+    if (!iwTable) return;
+
+    iwTable.innerHTML = IW_CATS.map(cat => {
         const rows = IW_INDICATORS.filter(i => i.cat === cat);
         return `<div class="iw-category">
-      <div class="iw-cat-title">${cat}</div>
-      <div class="iw-row header"><div>STS</div><div>CR-ID</div><div>INDIKATOR</div><div>THRESHOLD</div><div>READING</div><div>↕</div></div>
-      ${rows.map(r => {
-            const threshLabel = r.inverse
-                ? `&lt; ${r.triggerThresh} ${r.unit}`
-                : `&gt; ${r.triggerThresh} ${r.unit}`;
-            return `<div class="iw-row">
-        <div><div class="iw-dot ${r.status}"></div></div>
-        <div class="iw-cr">${r.cr}</div>
-        <div class="iw-name">${esc(r.name)}</div>
-        <div class="iw-threshold">${threshLabel}</div>
-        <div class="iw-reading ${r.status}">${esc(r.reading)}</div>
-        <div class="iw-trend ${r.trend === 'up' ? 'up' : r.trend === 'down' ? 'down' : 'flat'}">${r.trend === 'up' ? '↑' : r.trend === 'down' ? '↓' : '→'}</div>
-      </div>`}).join('')}
-    </div>`;
+            <div class="iw-cat-title">${cat}</div>
+            <div class="iw-row header"><div>STS</div><div>CR-ID</div><div>INDIKATOR</div><div>THRESHOLD</div><div>READING</div><div>↕</div></div>
+            ${rows.map(r => {
+                const threshLabel = r.inverse ? `&lt; ${r.triggerThresh} ${r.unit}` : `&gt; ${r.triggerThresh} ${r.unit}`;
+                return `<div class="iw-row">
+                    <div><div class="iw-dot ${r.status}"></div></div>
+                    <div class="iw-cr">${r.cr}</div>
+                    <div class="iw-name">${esc(r.name)}</div>
+                    <div class="iw-threshold">${threshLabel}</div>
+                    <div class="iw-reading ${r.status}">${esc(r.reading)}</div>
+                    <div class="iw-trend ${r.trend === 'up' ? 'up' : r.trend === 'down' ? 'down' : 'flat'}">${r.trend === 'up' ? '↑' : r.trend === 'down' ? '↓' : '→'}</div>
+                </div>`;
+            }).join('')}
+        </div>`;
     }).join('');
     renderIWCounts();
 }
+
 function renderIWCounts() {
     if (typeof IW_INDICATORS === 'undefined' || !Array.isArray(IW_INDICATORS)) return;
     const tot = IW_INDICATORS.length;
-    if (tot === 0) return; // Prevent Divide by Zero
+    if (tot === 0) return;
 
     const t = IW_INDICATORS.filter(i => i.status === 'triggered').length;
     const w = IW_INDICATORS.filter(i => i.status === 'watch').length;
@@ -1163,6 +1032,10 @@ function renderIWCounts() {
 const CCLS = { C: 'ac', I: 'ai', N: 'an', D: 'ad' };
 function renderACH() {
     if (typeof ACH_HYPOTHESES === 'undefined' || typeof ACH_EVIDENCE === 'undefined') return;
+    const achMatrix = document.getElementById('ach-matrix');
+    const achScores = document.getElementById('ach-scores');
+    const achConclusion = document.getElementById('ach-conclusion');
+    if (!achMatrix) return;
 
     const scores = ACH_HYPOTHESES.map((_, hi) => {
         let incons = 0, diag = 0;
@@ -1177,55 +1050,63 @@ function renderACH() {
     const minIncons = Math.min(...scores.map(s => s.incons));
     const bestCandidates = scores.filter(s => s.incons === minIncons);
     const maxDiag = Math.max(...bestCandidates.map(s => s.diag));
-
-    // Tie scenarios handling: pick all candidates with minIncons and maxDiag
     const winners = bestCandidates.filter(s => s.diag === maxDiag).map(s => s.hi);
-    const best = winners[0]; // Primary winner for simple highlight
 
     const hdrs = ACH_HYPOTHESES.map((h, i) => `<th class="hyp${winners.includes(i) ? ' winner' : ''}">${esc(h.short)}<br><small style="font-size:8px;opacity:.6">${h.id}</small></th>`).join('');
-    // Ensure styles to highlight winner columns subtly
     const rows = ACH_EVIDENCE.map(ev => `<tr><td class="ev-label">${esc(ev.ev)}</td>${ev.cells.map((c, i) => `<td class="${CCLS[c]}">${c}</td>`).join('')}</tr>`).join('');
 
-    document.getElementById('ach-matrix').innerHTML = `<table class="ach-table"><thead><tr><th>BUKTI / HIPOTESIS</th>${hdrs}</tr></thead><tbody>${rows}</tbody></table>`;
-    document.getElementById('ach-scores').innerHTML = scores.map((sc, i) => `<div class="ach-score-item"><div class="ach-score-val${winners.includes(i) ? ' best' : ''}">${sc.incons}I / ${sc.diag}D</div><div class="ach-score-name">${esc(ACH_HYPOTHESES[i].short)}</div></div>`).join('');
+    achMatrix.innerHTML = `<table class="ach-table"><thead><tr><th>BUKTI / HIPOTESIS</th>${hdrs}</tr></thead><tbody>${rows}</tbody></table>`;
+    if (achScores) achScores.innerHTML = scores.map((sc, i) => `<div class="ach-score-item"><div class="ach-score-val${winners.includes(i) ? ' best' : ''}">${sc.incons}I / ${sc.diag}D</div><div class="ach-score-name">${esc(ACH_HYPOTHESES[i].short)}</div></div>`).join('');
 
     const winnerNames = winners.map(i => `<strong>${esc(ACH_HYPOTHESES[i].name)}</strong>`).join(' & ');
-    document.getElementById('ach-conclusion').innerHTML = `<strong>KESIMPULAN ACH:</strong> Hipotesis paling konsisten dengan bukti: ${winnerNames} — hanya ${minIncons} inkonsistensi berbobot (Weighted Inconsistency) dari ${ACH_EVIDENCE.length} bukti. Lakukan collection requirement pada indikator diagnostik untuk konfirmasi.`;
+    if (achConclusion) achConclusion.innerHTML = `<strong>KESIMPULAN ACH:</strong> Hipotesis paling konsisten dengan bukti: ${winnerNames} — hanya ${minIncons} inkonsistensi berbobot dari ${ACH_EVIDENCE.length} bukti. Lakukan collection requirement pada indikator diagnostik untuk konfirmasi.`;
 }
 
 // ===== RED TEAM =====
+// FIX 6: renderRedTeam — added guard for undefined PAYOFF_DATA / WARGAME_SCENARIOS
 function renderRedTeam() {
+    if (typeof PAYOFF_DATA === 'undefined' || typeof WARGAME_SCENARIOS === 'undefined') return;
     const d = PAYOFF_DATA[currentPerspective];
-    document.getElementById('pv-label').textContent = d.title;
-    document.getElementById('nash-info').textContent = d.nash;
-    document.getElementById('dominant-strategy').innerHTML = `<strong>DOMINANT STRATEGY:</strong> ${d.dominant}`;
+    if (!d) return;
+
+    const pvLabel = document.getElementById('pv-label');
+    const nashInfo = document.getElementById('nash-info');
+    const domStrat = document.getElementById('dominant-strategy');
+    const payoffMatrix = document.getElementById('payoff-matrix');
+    const wargameList = document.getElementById('wargame-list');
+
+    if (pvLabel) pvLabel.textContent = d.title;
+    if (nashInfo) nashInfo.textContent = d.nash;
+    if (domStrat) domStrat.innerHTML = `<strong>DOMINANT STRATEGY:</strong> ${d.dominant}`;
+
     const rows = d.rowLabels, cols = d.colLabels;
     let html = `<div class="payoff-grid">
-    <div class="payoff-label"></div>
-    <div class="payoff-label col">${cols[0]}</div>
-    <div class="payoff-label col">${cols[1]}</div>`;
+        <div class="payoff-label"></div>
+        <div class="payoff-label col">${cols[0]}</div>
+        <div class="payoff-label col">${cols[1]}</div>`;
     d.cells.forEach((c, i) => {
         if (i % 2 === 0) {
             const rIdx = Math.floor(i / 2);
-            const rowLabel = rows[rIdx] || `R-${rIdx + 1}`;
-            html += `<div class="payoff-label row">${rowLabel}</div>`;
+            html += `<div class="payoff-label row">${rows[rIdx] || `R-${rIdx + 1}`}</div>`;
         }
         const va = parseFloat(c.rv), vb = parseFloat(c.cv);
         html += `<div class="payoff-cell${c.isNash ? ' nash' : ''}">
-      <div class="payoff-val ${va > 0 ? 'pos' : va < 0 ? 'neg' : 'neu'}">A:${c.rv}</div>
-      <div class="payoff-val ${vb > 0 ? 'pos' : vb < 0 ? 'neg' : 'neu'}">B:${c.cv}</div>
-      <div class="payoff-desc">${c.rdesc} / ${c.cdesc}</div>
-      ${c.isNash ? '<div style="font-size:8px;color:var(--accent-yellow);font-family:var(--font-data)">⚡NASH EQ</div>' : ''}
-    </div>`;
+            <div class="payoff-val ${va > 0 ? 'pos' : va < 0 ? 'neg' : 'neu'}">A:${c.rv}</div>
+            <div class="payoff-val ${vb > 0 ? 'pos' : vb < 0 ? 'neg' : 'neu'}">B:${c.cv}</div>
+            <div class="payoff-desc">${c.rdesc} / ${c.cdesc}</div>
+            ${c.isNash ? '<div style="font-size:8px;color:var(--accent-yellow);font-family:var(--font-data)">⚡NASH EQ</div>' : ''}
+        </div>`;
     });
     html += '</div>';
-    document.getElementById('payoff-matrix').innerHTML = html;
-    document.getElementById('wargame-list').innerHTML = WARGAME_SCENARIOS.map(w => `<div class="wargame-item">
-    <div class="wg-name">${w.name}</div>
-    <div class="wg-utility"><span style="font-size:9px;color:var(--text-dim);font-family:var(--font-data);min-width:52px">${w.l1}</span><div class="wg-bar"><div class="wg-fill" style="width:${w.util1}%;background:${w.col1}"></div></div><span class="wg-score" style="color:${w.col1}">${w.util1}</span></div>
-    <div class="wg-utility"><span style="font-size:9px;color:var(--text-dim);font-family:var(--font-data);min-width:52px">${w.l2}</span><div class="wg-bar"><div class="wg-fill" style="width:${w.util2}%;background:${w.col2}"></div></div><span class="wg-score" style="color:${w.col2}">${w.util2}</span></div>
-  </div>`).join('');
+    if (payoffMatrix) payoffMatrix.innerHTML = html;
+
+    if (wargameList) wargameList.innerHTML = WARGAME_SCENARIOS.map(w => `<div class="wargame-item">
+        <div class="wg-name">${w.name}</div>
+        <div class="wg-utility"><span style="font-size:9px;color:var(--text-dim);font-family:var(--font-data);min-width:52px">${w.l1}</span><div class="wg-bar"><div class="wg-fill" style="width:${w.util1}%;background:${w.col1}"></div></div><span class="wg-score" style="color:${w.col1}">${w.util1}</span></div>
+        <div class="wg-utility"><span style="font-size:9px;color:var(--text-dim);font-family:var(--font-data);min-width:52px">${w.l2}</span><div class="wg-bar"><div class="wg-fill" style="width:${w.util2}%;background:${w.col2}"></div></div><span class="wg-score" style="color:${w.col2}">${w.util2}</span></div>
+    </div>`).join('');
 }
+
 function setPerspective(p, el) {
     currentPerspective = p;
     document.querySelectorAll('.pv-btn').forEach(b => b.classList.remove('active'));
@@ -1234,43 +1115,44 @@ function setPerspective(p, el) {
 }
 
 // ===== NET ASSESSMENT =====
+// FIX 7: renderNetAssessTable — added guard for undefined NET_DIMS / NET_DATA
 function renderNetAssessTable() {
-    document.getElementById('netassess-table').innerHTML = `<table class="na-table">
-    <thead><tr><th>DIMENSI</th><th>🇮🇷 IRAN</th><th>🇮🇱 ISRAEL</th><th>🇺🇸 AS</th></tr></thead>
-    <tbody>${NET_DIMS.map((d, i) => `<tr>
-      <td class="na-dim">${d}</td>
-      <td><div class="na-bar"><div class="na-fill iran" style="width:${NET_DATA.iran[i]}%"></div></div> <span style="font-family:var(--font-data);font-size:10px">${NET_DATA.iran[i]}</span></td>
-      <td><div class="na-bar"><div class="na-fill israel" style="width:${NET_DATA.israel[i]}%"></div></div> <span style="font-family:var(--font-data);font-size:10px">${NET_DATA.israel[i]}</span></td>
-      <td><div class="na-bar"><div class="na-fill us" style="width:${NET_DATA.us[i]}%"></div></div> <span style="font-family:var(--font-data);font-size:10px">${NET_DATA.us[i]}</span></td>
-    </tr>`).join('')}</tbody>
-  </table>`;
-    document.getElementById('netassess-summary').innerHTML = '<strong>Net Assessment:</strong> AS memiliki superioritas absolut di hampir semua dimensi. Iran memimpin di <strong>Proxy Networks (85/100)</strong> sebagai asymmetric equalizer. Israel unggul di <strong>Siber (82)</strong> dan <strong>Presisi Militer (78)</strong>. Konflik langsung Iran vs Israel: Israel menang militer konvensional, namun Iran dapat mengeksploitasi proxy untuk meningkatkan biaya secara signifikan.';
-}
-// Fragmented initialization functions removed. Moved to consolidated block below.
+    if (typeof NET_DIMS === 'undefined' || typeof NET_DATA === 'undefined') return;
+    const tableEl = document.getElementById('netassess-table');
+    const summaryEl = document.getElementById('netassess-summary');
+    if (!tableEl) return;
 
-// Consolidated initialization moved to end of script.
+    tableEl.innerHTML = `<table class="na-table">
+        <thead><tr><th>DIMENSI</th><th>🇮🇷 IRAN</th><th>🇮🇱 ISRAEL</th><th>🇺🇸 AS</th></tr></thead>
+        <tbody>${NET_DIMS.map((d, i) => `<tr>
+            <td class="na-dim">${d}</td>
+            <td><div class="na-bar"><div class="na-fill iran" style="width:${NET_DATA.iran[i]}%"></div></div> <span style="font-family:var(--font-data);font-size:10px">${NET_DATA.iran[i]}</span></td>
+            <td><div class="na-bar"><div class="na-fill israel" style="width:${NET_DATA.israel[i]}%"></div></div> <span style="font-family:var(--font-data);font-size:10px">${NET_DATA.israel[i]}</span></td>
+            <td><div class="na-bar"><div class="na-fill us" style="width:${NET_DATA.us[i]}%"></div></div> <span style="font-family:var(--font-data);font-size:10px">${NET_DATA.us[i]}</span></td>
+        </tr>`).join('')}</tbody>
+    </table>`;
+
+    if (summaryEl) summaryEl.innerHTML = '<strong>Net Assessment:</strong> AS memiliki superioritas absolut di hampir semua dimensi. Iran memimpin di <strong>Proxy Networks (85/100)</strong> sebagai asymmetric equalizer. Israel unggul di <strong>Siber (82)</strong> dan <strong>Presisi Militer (78)</strong>. Konflik langsung Iran vs Israel: Israel menang militer konvensional, namun Iran dapat mengeksploitasi proxy untuk meningkatkan biaya secara signifikan.';
+}
+
 function initRadarChart() {
     const canvas = document.getElementById('radar-chart');
-    if (!canvas) return;
-    // Replace canvas with SVG radar chart
+    if (!canvas || typeof NET_DIMS === 'undefined' || typeof NET_DATA === 'undefined') return;
+
     const W = 280, H = 280, cx = 140, cy = 140, R = 110;
     const n = NET_DIMS.length;
     const angle = i => (i * 2 * Math.PI / n) - Math.PI / 2;
-    const pt = (val, i) => {
-        const a = angle(i), r = (val / 100) * R;
-        return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
-    };
+    const pt = (val, i) => { const a = angle(i), r = (val / 100) * R; return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }; };
     const ptStr = (val, i) => { const p = pt(val, i); return `${p.x.toFixed(1)},${p.y.toFixed(1)}`; };
     const polyStr = (data) => data.map((v, i) => ptStr(v, i)).join(' ');
 
-    // Grid rings
     let rings = '';
     for (let g = 20; g <= 100; g += 20) {
         const pts = NET_DIMS.map((_, i) => ptStr(g, i)).join(' ');
         rings += `<polygon points="${pts}" fill="none" stroke="rgba(26,45,69,0.8)" stroke-width="${g === 100 ? 1 : 0.5}"/>`;
         if (g === 100 || g === 60 || g === 20) rings += `<text x="${(cx + 4).toFixed(0)}" y="${(cy - (g / 100) * R - 3).toFixed(0)}" fill="rgba(100,150,180,0.5)" font-size="7" font-family="Share Tech Mono">${g}</text>`;
     }
-    // Axis lines and labels
+
     let axes = '';
     NET_DIMS.forEach((dim, i) => {
         const a = angle(i);
@@ -1280,7 +1162,7 @@ function initRadarChart() {
         const anchor = Math.abs(Math.cos(a)) < 0.1 ? 'middle' : Math.cos(a) > 0 ? 'start' : 'end';
         axes += `<text x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" fill="#4a7a9a" font-size="7.5" font-family="Share Tech Mono" text-anchor="${anchor}">${dim.replace(' & ', '/').replace('Kapabilitas ', '')}</text>`;
     });
-    // Data polygons
+
     const datasets = [
         { data: NET_DATA.iran, color: '#cc2244', label: '🇮🇷 Iran', alpha: '22' },
         { data: NET_DATA.israel, color: '#3399ff', label: '🇮🇱 Israel', alpha: '22' },
@@ -1297,27 +1179,46 @@ function initRadarChart() {
         <text x="${22 + di * 82}" y="273" fill="${ds.color}" font-size="9" font-family="Share Tech Mono">${ds.label}</text>`;
     });
 
-    // Replace canvas with SVG
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('width', W); svg.setAttribute('height', H + 20);
     svg.setAttribute('viewBox', `0 0 ${W} ${H + 20}`);
     svg.style.cssText = 'display:block;margin:0 auto;max-width:100%';
     svg.innerHTML = `<rect width="${W}" height="${H + 20}" fill="rgba(6,16,26,0.6)" rx="6"/>
-      ${rings}${axes}${polys}${dots}${legend}`;
+        ${rings}${axes}${polys}${dots}${legend}`;
     canvas.parentNode.replaceChild(svg, canvas);
-    radarChart = { update: () => { } }; // dummy to prevent errors
+    radarChart = { update: () => { } };
 }
 
 // ===== CONE =====
+// FIX 8: renderCone — added guards for undefined CONE data
 function renderCone() {
+    if (typeof CONE_MONTHS === 'undefined' || typeof CONE_WORST === 'undefined'
+        || typeof CONE_LIKELY === 'undefined' || typeof CONE_BEST === 'undefined'
+        || typeof CONE_MILESTONES === 'undefined') return;
+
+    const container = document.getElementById('cone-container');
+    if (!container) return;
+
     const track = CONE_MONTHS.map((m, i) => `<div class="cone-column">
-    <div class="cone-month">${m}</div>
-    <div class="cone-lane worst">${CONE_WORST[i]}</div>
-    <div class="cone-lane likely">${CONE_LIKELY[i]}</div>
-    <div class="cone-lane best">${CONE_BEST[i]}</div>
-  </div>`).join('');
-    const milestones = CONE_MILESTONES.map(m => `<div class="cone-milestone"><div class="cm-dot"></div><span class="cm-date">${m.date}</span><span>${m.text}</span></div>`).join('');
-    document.getElementById('cone-container').innerHTML = `<div class="cone-timeline"><div class="cone-track">${track}</div><div style="margin-top:16px"><div style="font-family:var(--font-data);font-size:9px;color:var(--accent-cyan);letter-spacing:2px;margin-bottom:8px">KEY DECISION POINTS</div>${milestones}</div></div>`;
+        <div class="cone-month">${m}</div>
+        <div class="cone-lane worst">${CONE_WORST[i]}</div>
+        <div class="cone-lane likely">${CONE_LIKELY[i]}</div>
+        <div class="cone-lane best">${CONE_BEST[i]}</div>
+    </div>`).join('');
+
+    const milestones = CONE_MILESTONES.map(m => `<div class="cone-milestone">
+        <div class="cm-dot"></div>
+        <span class="cm-date">${m.date}</span>
+        <span>${m.text}</span>
+    </div>`).join('');
+
+    container.innerHTML = `<div class="cone-timeline">
+        <div class="cone-track">${track}</div>
+        <div style="margin-top:16px">
+            <div style="font-family:var(--font-data);font-size:9px;color:var(--accent-cyan);letter-spacing:2px;margin-bottom:8px">KEY DECISION POINTS</div>
+            ${milestones}
+        </div>
+    </div>`;
 }
 
 // ===== SIGINT FUSION =====
@@ -1325,88 +1226,53 @@ function computeFusionScore() {
     if (typeof VERIFIED_NEWS === 'undefined' || typeof SIGINT_SOURCES === 'undefined'
         || typeof IW_INDICATORS === 'undefined') return 72;
     const avgCred = VERIFIED_NEWS.length > 0
-        ? VERIFIED_NEWS.reduce((s, n) => s + n.cred, 0) / VERIFIED_NEWS.length
-        : 7;
-    const t1Ratio = SIGINT_SOURCES.filter(s => s.tier === 't1').length
-        / SIGINT_SOURCES.length;
+        ? VERIFIED_NEWS.reduce((s, n) => s + n.cred, 0) / VERIFIED_NEWS.length : 7;
+    const t1Ratio = SIGINT_SOURCES.filter(s => s.tier === 't1').length / SIGINT_SOURCES.length;
     const anomalyPenalty = SIGINT_SOURCES.filter(s => s.anomaly).length * 5;
-    const clearRatio = IW_INDICATORS.filter(i => i.status === 'clear').length
-        / IW_INDICATORS.length;
-    return Math.min(96, Math.round(
-        (avgCred * 7) + (t1Ratio * 18) + (clearRatio * 12) + 22 - anomalyPenalty
-    ));
+    const clearRatio = IW_INDICATORS.filter(i => i.status === 'clear').length / IW_INDICATORS.length;
+    return Math.min(96, Math.round((avgCred * 7) + (t1Ratio * 18) + (clearRatio * 12) + 22 - anomalyPenalty));
 }
 
 function computePredInterval(pct, nActiveIndicators) {
-    // 95% confidence interval based on active corroborating indicators
-    // More confirmed I&W = narrower interval (more certainty)
     const p = Math.max(0.02, Math.min(0.97, pct / 100));
     const n = Math.max(1, nActiveIndicators);
     const marginPct = Math.round(196 * Math.sqrt(p * (1 - p) / n));
-    return {
-        lo: Math.max(2, pct - marginPct),
-        hi: Math.min(97, pct + marginPct),
-        margin: marginPct
-    };
+    return { lo: Math.max(2, pct - marginPct), hi: Math.min(97, pct + marginPct), margin: marginPct };
 }
 
 function computePredictiveAnalytics() {
-    // --- Helper: get current scenario probability by ID ---
-    const sc = id => {
-        const s = scenarios.find(x => x.id === id);
-        return s ? s.current : 0;
-    };
+    if (typeof IW_INDICATORS === 'undefined' || !Array.isArray(IW_INDICATORS)) return [];
 
-    // --- Helper: count IW by status ---
+    const sc = id => { const s = scenarios.find(x => x.id === id); return s ? s.current : 0; };
     const iwCount = status => IW_INDICATORS.filter(i => i.status === status).length;
 
-    // === PREDICTION 1: Eskalasi militer dalam 72 jam ===
-    // Based on: average military scenarios + IW triggered weight
     const milAvg = (sc('S4') + sc('S5') + sc('S6') + sc('S7')) / 4;
-    const iwTriggeredBonus = iwCount('triggered') * 2.5;
-    const iwWatchBonus = iwCount('watch') * 0.8;
-    const p1Raw = Math.round(milAvg * 0.55 + iwTriggeredBonus + iwWatchBonus);
-    const p1 = Math.min(95, Math.max(5, p1Raw));
+    const p1 = Math.min(95, Math.max(5, Math.round(milAvg * 0.55 + iwCount('triggered') * 2.5 + iwCount('watch') * 0.8)));
     const p1Conf = p1 > 55 ? 'HIGH' : p1 > 30 ? 'MED' : 'LOW';
-    const p1Label = p1 >= 75 ? 'HAMPIR PASTI' : p1 >= 55 ? 'TINGGI'
-        : p1 >= 35 ? 'MUNGKIN' : p1 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
+    const p1Label = p1 >= 75 ? 'HAMPIR PASTI' : p1 >= 55 ? 'TINGGI' : p1 >= 35 ? 'MUNGKIN' : p1 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
 
-    // === PREDICTION 2: Harga minyak melampaui $105 minggu ini ===
-    // Based on: S8 (Hormuz) + S9 (oil price) + S7 (US ops Yemen)
-    const p2Raw = Math.round(sc('S9') * 0.55 + sc('S8') * 0.30 + sc('S7') * 0.15);
-    const p2 = Math.min(95, Math.max(5, p2Raw));
+    const p2 = Math.min(95, Math.max(5, Math.round(sc('S9') * 0.55 + sc('S8') * 0.30 + sc('S7') * 0.15)));
     const p2Conf = sc('S9') > 45 ? 'HIGH' : sc('S9') > 30 ? 'MED' : 'LOW';
-    const p2Label = p2 >= 75 ? 'HAMPIR PASTI' : p2 >= 55 ? 'TINGGI'
-        : p2 >= 35 ? 'MUNGKIN' : p2 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
+    const p2Label = p2 >= 75 ? 'HAMPIR PASTI' : p2 >= 55 ? 'TINGGI' : p2 >= 35 ? 'MUNGKIN' : p2 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
 
-    // === PREDICTION 3: Laporan IAEA baru dalam 7 hari ===
-    // Based on: CR-007 (IAEA inspection failure) + CR-014 (Fordow excavation)
     const cr007 = IW_INDICATORS.find(i => i.cr === 'CR-007');
     const cr014 = IW_INDICATORS.find(i => i.cr === 'CR-014');
-    const iaeatriggered = (cr007 && cr007.status === 'triggered') ? 30 :
-        (cr007 && cr007.status === 'watch') ? 15 : 5;
-    const fordowBonus = (cr014 && cr014.status === 'triggered') ? 20 :
-        (cr014 && cr014.status === 'watch') ? 10 : 0;
+    const iaeatriggered = (cr007 && cr007.status === 'triggered') ? 30 : (cr007 && cr007.status === 'watch') ? 15 : 5;
+    const fordowBonus = (cr014 && cr014.status === 'triggered') ? 20 : (cr014 && cr014.status === 'watch') ? 10 : 0;
     const p3 = Math.min(97, Math.max(40, 45 + iaeatriggered + fordowBonus));
     const p3Conf = p3 > 70 ? 'HIGH' : 'MED';
-    const p3Label = p3 >= 75 ? 'HAMPIR PASTI' : p3 >= 55 ? 'TINGGI'
-        : p3 >= 35 ? 'MUNGKIN' : 'RENDAH';
+    const p3Label = p3 >= 75 ? 'HAMPIR PASTI' : p3 >= 55 ? 'TINGGI' : p3 >= 35 ? 'MUNGKIN' : 'RENDAH';
 
-    // === PREDICTION 4: Terobosan diplomasi Qatar/Oman dalam 14 hari ===
-    // Based on: S1 + S2 (diplomasi) — inversely affected by military pressure
     const dipAvg = (sc('S1') + sc('S2')) / 2;
     const milPressure = (sc('S4') + sc('S5')) / 2;
-    const p4Raw = Math.round(dipAvg * 0.60 - milPressure * 0.15 + 5);
-    const p4 = Math.min(85, Math.max(5, p4Raw));
+    const p4 = Math.min(85, Math.max(5, Math.round(dipAvg * 0.60 - milPressure * 0.15 + 5)));
     const p4Conf = dipAvg > 40 ? 'MED' : 'LOW';
-    const p4Label = p4 >= 75 ? 'HAMPIR PASTI' : p4 >= 55 ? 'TINGGI'
-        : p4 >= 35 ? 'MUNGKIN' : p4 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
+    const p4Label = p4 >= 75 ? 'HAMPIR PASTI' : p4 >= 55 ? 'TINGGI' : p4 >= 35 ? 'MUNGKIN' : p4 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
 
-    // n-indicators: count relevant active I&W per prediction
-    const iwMil = IW_INDICATORS.filter(i => ['CR-001', 'CR-002', 'CR-003', 'CR-005'].includes(i.cr) && i.status !== 'clear').length;
-    const iwEcon = IW_INDICATORS.filter(i => ['CR-009', 'CR-010', 'CR-012'].includes(i.cr) && i.status !== 'clear').length;
-    const iwNuke = IW_INDICATORS.filter(i => ['CR-007', 'CR-013', 'CR-014'].includes(i.cr) && i.status !== 'clear').length;
-    const iwDip = IW_INDICATORS.filter(i => ['CR-006', 'CR-008'].includes(i.cr) && i.status !== 'clear').length;
+    const iwMil = IW_INDICATORS.filter(i => ['CR-001','CR-002','CR-003','CR-005'].includes(i.cr) && i.status !== 'clear').length;
+    const iwEcon = IW_INDICATORS.filter(i => ['CR-009','CR-010','CR-012'].includes(i.cr) && i.status !== 'clear').length;
+    const iwNuke = IW_INDICATORS.filter(i => ['CR-007','CR-013','CR-014'].includes(i.cr) && i.status !== 'clear').length;
+    const iwDip = IW_INDICATORS.filter(i => ['CR-006','CR-008'].includes(i.cr) && i.status !== 'clear').length;
 
     const int1 = computePredInterval(p1, iwMil);
     const int2 = computePredInterval(p2, iwEcon);
@@ -1414,90 +1280,78 @@ function computePredictiveAnalytics() {
     const int4 = computePredInterval(p4, Math.max(1, iwDip));
 
     return [
-        {
-            label: 'Eskalasi militer kinetik dalam 72 jam',
-            pct: p1, lo: int1.lo, hi: int1.hi,
-            levelLabel: p1Label,
-            conf: p1Conf,
-            confClass: p1Conf.toLowerCase()
-        },
-        {
-            label: 'Harga Brent melampaui USD 105/barel minggu ini',
-            pct: p2, lo: int2.lo, hi: int2.hi,
-            levelLabel: p2Label,
-            conf: p2Conf,
-            confClass: p2Conf.toLowerCase()
-        },
-        {
-            label: 'IAEA rilis laporan temuan nuklir baru &lt;7 hari',
-            pct: p3, lo: int3.lo, hi: int3.hi,
-            levelLabel: p3Label,
-            conf: p3Conf,
-            confClass: p3Conf.toLowerCase()
-        },
-        {
-            label: 'Terobosan negosiasi back-channel Qatar/Oman &lt;14 hari',
-            pct: p4, lo: int4.lo, hi: int4.hi,
-            levelLabel: p4Label,
-            conf: p4Conf,
-            confClass: p4Conf.toLowerCase()
-        },
+        { label: 'Eskalasi militer kinetik dalam 72 jam', pct: p1, lo: int1.lo, hi: int1.hi, levelLabel: p1Label, conf: p1Conf, confClass: p1Conf.toLowerCase() },
+        { label: 'Harga Brent melampaui USD 105/barel minggu ini', pct: p2, lo: int2.lo, hi: int2.hi, levelLabel: p2Label, conf: p2Conf, confClass: p2Conf.toLowerCase() },
+        { label: 'IAEA rilis laporan temuan nuklir baru &lt;7 hari', pct: p3, lo: int3.lo, hi: int3.hi, levelLabel: p3Label, conf: p3Conf, confClass: p3Conf.toLowerCase() },
+        { label: 'Terobosan negosiasi back-channel Qatar/Oman &lt;14 hari', pct: p4, lo: int4.lo, hi: int4.hi, levelLabel: p4Label, conf: p4Conf, confClass: p4Conf.toLowerCase() },
     ];
 }
 
 function renderSIGINT() {
-    const base = computeFusionScore();
-    document.getElementById('fusion-score-val').textContent = base;
-    document.getElementById('source-grid').innerHTML = SIGINT_SOURCES.map(s => {
-        const str = Math.min(100, s.strength + Math.round((Math.random() - .4) * 8));
-        const clr = str >= 80 ? '#00d4ff' : str >= 65 ? '#ffd700' : '#ff6e40';
-        return `<div class="source-card">
-      <div class="sc-header"><span class="sc-name">${s.name}</span><span class="sc-tier ${s.tier}">${s.tier.toUpperCase()}</span></div>
-      <div class="sc-strength-wrap"><div class="sc-str-bar"><div class="sc-str-fill" style="width:${str}%;background:${clr}"></div></div><span class="sc-str-pct">${str}%</span></div>
-      <div class="sc-meta">${s.topic}</div>
-      <div class="sc-ping">Last: ${s.freshMins}mnt lalu ${s.speciality.map(b => `<span class="sc-badge">${b}</span>`).join('')}</div>
-    </div>`;
-    }).join('');
-    const anomalies = SIGINT_SOURCES.filter(s => s.anomaly);
-    document.getElementById('anomaly-list').innerHTML = anomalies.length ? anomalies.map(s => `<div class="anomaly-item"><span class="anom-src">⚠ ${s.name}</span><br>Sinyal anomali — output berbeda dari konsensus tier-1. Perlu cross-validation manual.</div>`).join('') : '<div style="color:var(--text-dim);font-size:11px">Tidak ada anomali terdeteksi.</div>';
-
-    const predictions = computePredictiveAnalytics();
+    if (typeof SIGINT_SOURCES === 'undefined') return;
+    const fusionEl = document.getElementById('fusion-score-val');
+    const sourceGrid = document.getElementById('source-grid');
+    const anomalyList = document.getElementById('anomaly-list');
     const predEl = document.getElementById('predictive-list');
+
+    const base = computeFusionScore();
+    if (fusionEl) fusionEl.textContent = base;
+
+    if (sourceGrid) {
+        sourceGrid.innerHTML = SIGINT_SOURCES.map(s => {
+            const str = Math.min(100, s.strength + Math.round((Math.random() - .4) * 8));
+            const clr = str >= 80 ? '#00d4ff' : str >= 65 ? '#ffd700' : '#ff6e40';
+            return `<div class="source-card">
+                <div class="sc-header"><span class="sc-name">${s.name}</span><span class="sc-tier ${s.tier}">${s.tier.toUpperCase()}</span></div>
+                <div class="sc-strength-wrap"><div class="sc-str-bar"><div class="sc-str-fill" style="width:${str}%;background:${clr}"></div></div><span class="sc-str-pct">${str}%</span></div>
+                <div class="sc-meta">${s.topic}</div>
+                <div class="sc-ping">Last: ${s.freshMins}mnt lalu ${s.speciality.map(b => `<span class="sc-badge">${b}</span>`).join('')}</div>
+            </div>`;
+        }).join('');
+    }
+
+    if (anomalyList) {
+        const anomalies = SIGINT_SOURCES.filter(s => s.anomaly);
+        anomalyList.innerHTML = anomalies.length
+            ? anomalies.map(s => `<div class="anomaly-item"><span class="anom-src">⚠ ${s.name}</span><br>Sinyal anomali — output berbeda dari konsensus tier-1. Perlu cross-validation manual.</div>`).join('')
+            : '<div style="color:var(--text-dim);font-size:11px">Tidak ada anomali terdeteksi.</div>';
+    }
+
     if (predEl) {
+        const predictions = computePredictiveAnalytics();
         predEl.innerHTML = predictions.map(p => `
             <div class="pred-item">
                 <div class="pred-label">${p.label}</div>
                 <div class="pred-conf ${p.confClass}">
                     ${p.levelLabel} — ${p.pct}%
-                    <span style="font-size:8px;opacity:0.7;margin-left:4px">
-                        [${p.lo}%–${p.hi}%]
-                    </span>
+                    <span style="font-size:8px;opacity:0.7;margin-left:4px">[${p.lo}%–${p.hi}%]</span>
                     (Conf: ${p.conf})
                 </div>
             </div>`).join('');
     }
 }
 
-// ===== CUSTOM SVG TACTICAL MAP (100% OFFLINE) =====
-// Logic peta dan layer control (initMap, toggleLayer) sekarang ditangani secara eksekutif di map.js
-
-// ===== CHRONOLOGY OF ESCALATION =====
+// ===== CHRONOLOGY =====
+// FIX 9: renderChronology — added guard for undefined ESCALATION_CHRONOLOGY
 function renderChronology() {
-    const html = ESCALATION_CHRONOLOGY.map(item => `
-    <div class="chron-item">
-      <div class="chron-line"></div>
-      <div class="chron-dot">◉</div>
-      <div class="chron-content">
-        <div class="chron-time">${item.time}</div>
-        <div class="chron-title">${item.title}</div>
-        <div class="chron-impact">${item.impact}</div>
-        <div class="chron-causality">
-          <span class="causality-label">ANALISIS KAUSALITAS :</span>
-          ${item.causality}
-        </div>
-      </div>
-    </div>`).join('');
-    document.getElementById('chronology-container').innerHTML = html;
+    if (typeof ESCALATION_CHRONOLOGY === 'undefined' || !Array.isArray(ESCALATION_CHRONOLOGY)) return;
+    const container = document.getElementById('chronology-container');
+    if (!container) return;
+
+    container.innerHTML = ESCALATION_CHRONOLOGY.map(item => `
+        <div class="chron-item">
+            <div class="chron-line"></div>
+            <div class="chron-dot">◉</div>
+            <div class="chron-content">
+                <div class="chron-time">${item.time}</div>
+                <div class="chron-title">${item.title}</div>
+                <div class="chron-impact">${item.impact}</div>
+                <div class="chron-causality">
+                    <span class="causality-label">ANALISIS KAUSALITAS :</span>
+                    ${item.causality}
+                </div>
+            </div>
+        </div>`).join('');
 }
 
 // ===== ACH CHALLENGE =====
@@ -1506,9 +1360,10 @@ function toggleChallenge(id) {
     if (box) box.classList.toggle('open');
 }
 
-// ===== RED PHONE ALERTS =====
+// ===== RED PHONE =====
 function acknowledgeRedPhone() {
-    document.getElementById('red-phone-modal').classList.add('hidden');
+    const modal = document.getElementById('red-phone-modal');
+    if (modal) modal.classList.add('hidden');
 }
 
 // ===== PDF EXPORT =====
@@ -1523,144 +1378,81 @@ function generatePDFReport() {
     const now = new Date();
     const wib = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 7 * 3600000);
     const p = n => String(n).padStart(2, '0');
-    const pdfMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const pdfMonths = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
     const timestamp = `${p(wib.getDate())} ${pdfMonths[wib.getMonth()]} ${wib.getFullYear()} — ${p(wib.getHours())}:${p(wib.getMinutes())} WIB`;
-    const dateSlug = `${wib.getFullYear()}${p(wib.getMonth() + 1)}${p(wib.getDate())}_${p(wib.getHours())}${p(wib.getMinutes())}`;
-    const threatLabels = ['RENDAH', 'SEDANG', 'WASPADA', 'TINGGI', 'KRITIS'];
-    const threatColors = {
-        0: [0, 230, 118], 1: [105, 240, 174], 2: [255, 215, 0],
-        3: [255, 110, 64], 4: [255, 23, 68]
-    };
+    const dateSlug = `${wib.getFullYear()}${p(wib.getMonth()+1)}${p(wib.getDate())}_${p(wib.getHours())}${p(wib.getMinutes())}`;
+    const threatLabels = ['RENDAH','SEDANG','WASPADA','TINGGI','KRITIS'];
+    const threatColors = { 0:[0,230,118], 1:[105,240,174], 2:[255,215,0], 3:[255,110,64], 4:[255,23,68] };
 
-    // ── PAGE BACKGROUND ──
-    doc.setFillColor(6, 10, 15);
-    doc.rect(0, 0, 210, 297, 'F');
+    doc.setFillColor(6, 10, 15); doc.rect(0, 0, 210, 297, 'F');
+    doc.setFillColor(10, 20, 35); doc.rect(0, 0, 210, 22, 'F');
+    doc.setDrawColor(0, 212, 255); doc.setLineWidth(0.3); doc.line(0, 22, 210, 22);
 
-    // ── HEADER BAR ──
-    doc.setFillColor(10, 20, 35);
-    doc.rect(0, 0, 210, 22, 'F');
-    doc.setDrawColor(0, 212, 255);
-    doc.setLineWidth(0.3);
-    doc.line(0, 22, 210, 22);
-
-    doc.setTextColor(0, 212, 255);
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('INTEL DASHBOARD v3.0', 10, 10);
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(106, 143, 168);
+    doc.setTextColor(0, 212, 255); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+    doc.text('INTEL DASHBOARD v4.0', 10, 10);
+    doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(106, 143, 168);
     doc.text('BRIEFING REPORT — KONFLIK IRAN-ISRAEL-AS', 10, 16);
     doc.setTextColor(100, 130, 150);
     doc.text(timestamp, 210 - 10, 10, { align: 'right' });
     doc.text('CLASSIFIED — INTERNAL USE ONLY', 210 - 10, 16, { align: 'right' });
 
-    // ── THREAT LEVEL BLOCK ──
     const tl = currentThreatLevel;
     const tlLabel = threatLabels[tl] || 'UNKNOWN';
     const tlColor = threatColors[tl] || [200, 200, 200];
-    doc.setFillColor(15, 25, 40);
-    doc.rect(8, 28, 92, 24, 'F');
-    doc.setDrawColor(...tlColor);
-    doc.setLineWidth(0.6);
-    doc.rect(8, 28, 92, 24);
-    doc.setTextColor(130, 160, 180);
-    doc.setFontSize(8);
-    doc.text('LEVEL ANCAMAN', 14, 35);
-    doc.setTextColor(...tlColor);
-    doc.setFontSize(22);
-    doc.setFont('helvetica', 'bold');
+    doc.setFillColor(15, 25, 40); doc.rect(8, 28, 92, 24, 'F');
+    doc.setDrawColor(...tlColor); doc.setLineWidth(0.6); doc.rect(8, 28, 92, 24);
+    doc.setTextColor(130, 160, 180); doc.setFontSize(8); doc.text('LEVEL ANCAMAN', 14, 35);
+    doc.setTextColor(...tlColor); doc.setFontSize(22); doc.setFont('helvetica', 'bold');
     doc.text(tlLabel, 14, 48);
 
-    // ── I&W STATUS BLOCK ──
-    const iwT = IW_INDICATORS.filter(i => i.status === 'triggered').length;
-    const iwW = IW_INDICATORS.filter(i => i.status === 'watch').length;
-    const iwC = IW_INDICATORS.filter(i => i.status === 'clear').length;
-    doc.setFillColor(15, 25, 40);
-    doc.rect(106, 28, 96, 24, 'F');
-    doc.setDrawColor(40, 60, 85);
-    doc.setLineWidth(0.4);
-    doc.rect(106, 28, 96, 24);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(130, 160, 180);
-    doc.setFontSize(8);
-    doc.text('I&W MATRIX STATUS', 112, 35);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(255, 80, 100);
-    doc.text(`${iwT} TRIGGERED`, 112, 47);
-    doc.setTextColor(255, 225, 50);
-    doc.text(`${iwW} WATCH`, 147, 47);
-    doc.setTextColor(0, 240, 128);
-    doc.text(`${iwC} CLEAR`, 174, 47);
+    const iwT = typeof IW_INDICATORS !== 'undefined' ? IW_INDICATORS.filter(i => i.status === 'triggered').length : 0;
+    const iwW = typeof IW_INDICATORS !== 'undefined' ? IW_INDICATORS.filter(i => i.status === 'watch').length : 0;
+    const iwC = typeof IW_INDICATORS !== 'undefined' ? IW_INDICATORS.filter(i => i.status === 'clear').length : 0;
 
-    // ── SECTION: TOP SCENARIOS ──
-    doc.setDrawColor(26, 45, 69);
-    doc.setLineWidth(0.2);
-    doc.line(8, 56, 202, 56);
-    doc.setTextColor(0, 212, 255);
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
+    doc.setFillColor(15, 25, 40); doc.rect(106, 28, 96, 24, 'F');
+    doc.setDrawColor(40, 60, 85); doc.setLineWidth(0.4); doc.rect(106, 28, 96, 24);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(130, 160, 180); doc.setFontSize(8);
+    doc.text('I&W MATRIX STATUS', 112, 35);
+    doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 80, 100); doc.text(`${iwT} TRIGGERED`, 112, 47);
+    doc.setTextColor(255, 225, 50); doc.text(`${iwW} WATCH`, 147, 47);
+    doc.setTextColor(0, 240, 128); doc.text(`${iwC} CLEAR`, 174, 47);
+
+    doc.setDrawColor(26, 45, 69); doc.setLineWidth(0.2); doc.line(8, 56, 202, 56);
+    doc.setTextColor(0, 212, 255); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
     doc.text('PROBABILITAS SKENARIO — TOP 8', 8, 63);
 
     const top8 = [...scenarios].sort((a, b) => b.current - a.current).slice(0, 8);
-    const groupColor = {
-        militer: [255, 80, 100],
-        diplomasi: [0, 230, 255],
-        ekonomi: [255, 225, 50],
-        ekstrem: [200, 130, 255]
-    };
+    const groupColor = { militer:[255,80,100], diplomasi:[0,230,255], ekonomi:[255,225,50], ekstrem:[200,130,255] };
 
     top8.forEach((s, i) => {
         const col = i < 4 ? 8 : 108;
         const row = (i % 4);
         const y = 72 + row * 16;
         const gc = groupColor[s.group] || [200, 200, 200];
-
-        // bar background
-        doc.setFillColor(15, 25, 40);
-        doc.rect(col, y - 5, 96, 14, 'F');
-        doc.setDrawColor(40, 60, 85);
-        doc.setLineWidth(0.3);
-        doc.rect(col, y - 5, 96, 14);
-
-        // probability fill bar
+        doc.setFillColor(15, 25, 40); doc.rect(col, y - 5, 96, 14, 'F');
+        doc.setDrawColor(40, 60, 85); doc.setLineWidth(0.3); doc.rect(col, y - 5, 96, 14);
         const barW = Math.round((s.current / 100) * 72);
-        // Simulate ~35% opacity over dark background (15, 25, 40)
         const sr = Math.round(gc[0] * 0.35 + 15 * 0.65);
         const sg = Math.round(gc[1] * 0.35 + 25 * 0.65);
         const sb = Math.round(gc[2] * 0.35 + 40 * 0.65);
-        doc.setFillColor(sr, sg, sb);
-        doc.rect(col + 2, y - 3, barW, 9, 'F');
-
-        // text
-        doc.setTextColor(220, 240, 255);
-        doc.setFontSize(7.5);
-        doc.setFont('helvetica', 'normal');
+        doc.setFillColor(sr, sg, sb); doc.rect(col + 2, y - 3, barW, 9, 'F');
+        doc.setTextColor(220, 240, 255); doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
         const nameClipped = s.name.length > 38 ? s.name.substring(0, 36) + '…' : s.name;
         doc.text(nameClipped, col + 4, y + 3);
-        doc.setTextColor(...gc);
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...gc); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
         doc.text(`${s.current}%`, col + 88, y + 4, { align: 'right' });
     });
 
-    // ── SECTION: ASSUMPTION VIOLATIONS ──
-    const violated = (typeof KEY_ASSUMPTIONS !== 'undefined')
-        ? KEY_ASSUMPTIONS.filter(k => !k.active) : [];
-    const openGaps = (typeof INTEL_GAPS !== 'undefined')
-        ? INTEL_GAPS.filter(g => g.status === 'OPEN') : [];
+    const violated = (typeof KEY_ASSUMPTIONS !== 'undefined') ? KEY_ASSUMPTIONS.filter(k => !k.active) : [];
+    const openGaps = (typeof INTEL_GAPS !== 'undefined') ? INTEL_GAPS.filter(g => g.status === 'OPEN') : [];
 
     doc.line(8, 138, 202, 138);
-    doc.setTextColor(255, 225, 50);
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 225, 50); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
     doc.text(`KEY ASSUMPTIONS — ${violated.length > 0 ? violated.length + ' DILANGGAR' : 'SEMUA AKTIF'}`, 8, 145);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
     if (violated.length === 0) {
-        doc.setTextColor(0, 240, 128);
-        doc.text('Semua asumsi analitik aktif dan valid.', 8, 153);
+        doc.setTextColor(0, 240, 128); doc.text('Semua asumsi analitik aktif dan valid.', 8, 153);
     } else {
         violated.forEach((ka, i) => {
             doc.setTextColor(255, 80, 100);
@@ -1668,17 +1460,12 @@ function generatePDFReport() {
         });
     }
 
-    // ── SECTION: OPEN INTEL GAPS ──
     const gapStartY = 162 + Math.max(0, violated.length - 1) * 8;
     doc.line(8, gapStartY, 202, gapStartY);
-    doc.setTextColor(255, 160, 0);
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 160, 0); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
     doc.text(`INTELLIGENCE GAPS — ${openGaps.length} OPEN`, 8, gapStartY + 7);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    const gapDisplay = openGaps.slice(0, 5);
-    gapDisplay.forEach((g, i) => {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    openGaps.slice(0, 5).forEach((g, i) => {
         doc.setTextColor(255, 185, 100);
         doc.text(`○ [${g.id}][${g.priority}] ${g.question.substring(0, 85)}`, 8, gapStartY + 16 + i * 8);
     });
@@ -1687,52 +1474,33 @@ function generatePDFReport() {
         doc.text(`... dan ${openGaps.length - 5} gap lainnya`, 8, gapStartY + 16 + 5 * 8);
     }
 
-    // ── SECTION: ANALYST SUMMARY ──
     const summaryStartY = gapStartY + 24 + Math.min(openGaps.length, 6) * 8;
     doc.line(8, summaryStartY, 202, summaryStartY);
-    doc.setTextColor(0, 255, 204);
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 255, 204); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
     doc.text('RINGKASAN ANALIS (AUTO-GENERATED)', 8, summaryStartY + 7);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(200, 220, 240);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(200, 220, 240);
     try {
         const summary = buildAnalystSummary();
         const summaryLines = doc.splitTextToSize(summary, 190);
-        const maxLines = Math.min(summaryLines.length, 8);
-        doc.text(summaryLines.slice(0, maxLines), 8, summaryStartY + 16);
-    } catch (e) {
-        doc.text('Ringkasan tidak tersedia.', 8, summaryStartY + 16);
-    }
+        doc.text(summaryLines.slice(0, 8), 8, summaryStartY + 16);
+    } catch (e) { doc.text('Ringkasan tidak tersedia.', 8, summaryStartY + 16); }
 
-    // ── FOOTER ──
-    doc.setFillColor(10, 20, 35);
-    doc.rect(0, 285, 210, 12, 'F');
-    doc.setDrawColor(0, 212, 255);
-    doc.setLineWidth(0.2);
-    doc.line(0, 285, 210, 285);
-    doc.setTextColor(60, 90, 110);
-    doc.setFontSize(6.5);
-    doc.text('INTEL DASHBOARD v3.0 — Metode: I&W + ACH + Red Team + DST + Key Assumptions + SIGINT Fusion', 8, 291);
+    doc.setFillColor(10, 20, 35); doc.rect(0, 285, 210, 12, 'F');
+    doc.setDrawColor(0, 212, 255); doc.setLineWidth(0.2); doc.line(0, 285, 210, 285);
+    doc.setTextColor(60, 90, 110); doc.setFontSize(6.5);
+    doc.text('INTEL DASHBOARD v4.0 — Metode: I&W + ACH + Red Team + DST + Key Assumptions + SIGINT Fusion', 8, 291);
     doc.text(`Refresh #${refreshCount} | ${timestamp}`, 210 - 8, 291, { align: 'right' });
 
-    // ── SAVE ──
     const btn = document.getElementById('pdf-btn');
     if (btn) {
         btn.textContent = '✓ PDF TERSIMPAN';
         btn.style.color = 'var(--accent-green)';
-        setTimeout(() => {
-            btn.textContent = '⬇ EXPORT PDF';
-            btn.style.color = '';
-        }, 2000);
+        setTimeout(() => { btn.textContent = '⬇ EXPORT PDF'; btn.style.color = ''; }, 2000);
     }
 
     try {
-        // Explicit save — this usually forces the name correctly
         doc.save(`Intel_Briefing_${dateSlug}.pdf`);
     } catch (e) {
-        // Fallback for restricted WebViews where doc.save() strips filenames or fails
         const pdfBase64 = doc.output('datauristring');
         const a = document.createElement('a');
         a.href = pdfBase64;
@@ -1744,8 +1512,7 @@ function generatePDFReport() {
 }
 
 // ==========================================
-// FIX KATEGORI 1: UI EVENT BINDING
-// Restored consolidated initialization
+// UI EVENT BINDING — Consolidated
 // ==========================================
 
 function initTabEvents() {
@@ -1760,7 +1527,6 @@ function initTabEvents() {
 }
 
 function initToolbarEvents() {
-    // Layer toggles
     document.querySelectorAll('.wv-pill[data-layer]').forEach(btn => {
         btn.addEventListener('click', function () {
             const cat = this.getAttribute('data-layer');
@@ -1774,7 +1540,6 @@ function initToolbarEvents() {
         });
     });
 
-    // Analysis panel toggles
     const btnAnalysis = document.getElementById('btn-analysis');
     if (btnAnalysis) btnAnalysis.addEventListener('click', () => {
         if (typeof window.toggleAnalysisPanel === 'function') window.toggleAnalysisPanel();
@@ -1784,7 +1549,6 @@ function initToolbarEvents() {
         if (typeof window.toggleAnalysisPanel === 'function') window.toggleAnalysisPanel();
     });
 
-    // Action buttons
     const refreshBtn = document.getElementById('refresh-btn');
     if (refreshBtn) refreshBtn.addEventListener('click', triggerRefresh);
 
@@ -1797,7 +1561,6 @@ function initToolbarEvents() {
     const uvBtn = document.getElementById('uv-toggle-btn');
     if (uvBtn) uvBtn.addEventListener('click', toggleUnverified);
 
-    // Perspective & Filter buttons
     document.querySelectorAll('.pv-btn').forEach(btn => {
         btn.addEventListener('click', function () {
             const p = this.getAttribute('data-perspective');
@@ -1835,7 +1598,6 @@ function initRedPhoneEvents() {
 
 function initDynamicEventDelegation() {
     document.addEventListener('click', function (e) {
-        // Challenge buttons
         const challengeBtn = e.target.closest('[data-challenge-id]');
         if (challengeBtn) {
             const id = challengeBtn.getAttribute('data-challenge-id');
@@ -1844,12 +1606,11 @@ function initDynamicEventDelegation() {
     });
 }
 
-// Final Deployment Initialization
 document.addEventListener('DOMContentLoaded', () => {
     initTabEvents();
     initToolbarEvents();
     initAnalysisPanelEvents();
     initRedPhoneEvents();
     initDynamicEventDelegation();
-    console.log('[INIT] UI Event Binding Sequence Complete.');
+    console.log('[INIT] UI Event Binding Complete.');
 });
