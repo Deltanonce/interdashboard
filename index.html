@@ -9,7 +9,7 @@
     content="Sistem analitik intelijen real-time: I&W Matrix, ACH, Red Teaming, Net Assessment, Cone of Plausibility, SIGINT Fusion — Konflik Iran-Israel-AS" />
   <meta name="theme-color" content="#06101a" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://api.mapbox.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://api.mapbox.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://server.arcgisonline.com https://api.mapbox.com; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none';" />
+    content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://server.arcgisonline.com; connect-src 'self' https://api.adsb.lol wss://stream.aisstream.io http://localhost:8888; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none';" />
   <link rel="icon" href="data:," />
 
   <!-- Fonts -->
@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
     href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@400;600;800&display=swap"
-    rel="stylesheet" media="print" onload="this.media='all'" />
+    rel="stylesheet" media="print" id="font-link" />
   <noscript>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@600&display=swap"
       rel="stylesheet">
@@ -179,37 +179,37 @@
           <div class="ar-value" id="countdown-display">05:00</div>
         </div>
       </div>
-      <button class="wv-btn-refresh" id="refresh-btn" onclick="triggerRefresh()">↻ REFRESH</button>
-      <button class="wv-btn-export" id="pdf-btn" onclick="generatePDFReport()">⬇ PDF</button>
+      <button class="wv-btn-refresh" id="refresh-btn">↻ REFRESH</button>
+      <button class="wv-btn-export" id="pdf-btn">⬇ PDF</button>
     </div>
   </aside>
 
   <!-- ===== BOTTOM TOOLBAR (Layer Pills) ===== -->
   <nav class="wv-bottom-toolbar">
     <div class="wv-pill-group">
-      <button class="wv-pill active" data-color="cyan" onclick="toggleLiveLayer('adsb', this)">
-        <span class="wv-pill-dot"></span> Military Flights
-        <span class="wv-pill-count" id="wv-adsb-count">0</span>
+      <button class="wv-pill active" data-color="cyan" data-live-layer="adsb">
+        <span class="wv-pill-dot" style="background:var(--accent-cyan)"></span>
+        AIR (ADS-B) <span class="wv-pill-val" id="live-adsb-count">0</span>
       </button>
-      <button class="wv-pill active" data-color="green" onclick="toggleLiveLayer('ais', this)">
-        <span class="wv-pill-dot"></span> Maritime Traffic
-        <span class="wv-pill-count" id="wv-ais-count">0</span>
+      <button class="wv-pill active" data-color="green" data-live-layer="ais">
+        <span class="wv-pill-dot connected" id="ais-status-dot"></span>
+        SEA (AIS) <span class="wv-pill-val" id="live-ais-count">0</span>
       </button>
-      <button class="wv-pill active" data-color="blue" onclick="toggleLayer('naval', this)">
-        <span class="wv-pill-dot"></span> Naval Force
+      <button class="wv-pill active" data-color="blue" data-layer="naval">
+        NAVAL
       </button>
-      <button class="wv-pill active" data-color="orange" onclick="toggleLayer('missile', this)">
-        <span class="wv-pill-dot"></span> Missile Sites
+      <button class="wv-pill active" data-color="orange" data-layer="missile">
+        MISSILE
       </button>
-      <button class="wv-pill active" data-color="purple" onclick="toggleLayer('airbase', this)">
-        <span class="wv-pill-dot"></span> Air Bases
+      <button class="wv-pill active" data-color="purple" data-layer="airbase">
+        AIRBASE
       </button>
-      <button class="wv-pill active" data-color="red" onclick="toggleLayer('proxy', this)">
-        <span class="wv-pill-dot"></span> Proxy Forces
+      <button class="wv-pill active" data-color="red" data-layer="proxy">
+        PROXY
       </button>
     </div>
     <div class="wv-pill-sep"></div>
-    <button class="wv-pill wv-pill-special" id="btn-analysis" onclick="toggleAnalysisPanel()">
+    <button class="wv-pill wv-pill-special" id="btn-analysis">
       ▶ ANALYSIS PANEL
     </button>
   </nav>
@@ -228,7 +228,7 @@
     <div class="wv-analysis-content">
       <div class="wv-analysis-header">
         <span>⬡ ANALISIS MENDALAM</span>
-        <button class="wv-close-btn" onclick="toggleAnalysisPanel()">✕</button>
+        <button class="wv-close-btn" id="close-analysis-btn">✕</button>
       </div>
 
       <div class="accordion-container">
@@ -338,10 +338,10 @@
           <div class="acc-body" id="tab-redteam">
             <div class="rt-perspective-nav" style="margin-bottom:10px;">
               <span class="rt-label">PERSPEKTIF:</span>
-              <button class="pv-btn active" onclick="setPerspective('iran', this)">🇮🇷 IRAN</button>
-              <button class="pv-btn" onclick="setPerspective('israel', this)">🇮🇱 ISRAEL</button>
-              <button class="pv-btn" onclick="setPerspective('us', this)">🇺🇸 AS</button>
-              <button class="pv-btn" onclick="setPerspective('china', this)">🇨🇳 CHINA</button>
+              <button class="pv-btn active" data-perspective="iran">🇮🇷 IRAN</button>
+              <button class="pv-btn" data-perspective="israel">🇮🇱 ISRAEL</button>
+              <button class="pv-btn" data-perspective="us">🇺🇸 AS</button>
+              <button class="pv-btn" data-perspective="china">🇨🇳 CHINA</button>
             </div>
             <div class="redteam-layout">
               <div class="payoff-section">
@@ -421,9 +421,9 @@
               <div>
                 <div class="card-title">OSINT FEED — VERIFIED <span class="feed-badge" id="feed-count">8</span></div>
                 <div class="feed-filter-row">
-                  <button class="ff-btn active" onclick="filterFeed('all')">SEMUA</button>
-                  <button class="ff-btn" onclick="filterFeed('eskalasi')">ESK</button>
-                  <button class="ff-btn" onclick="filterFeed('deeskalasi')">DE-ESK</button>
+                  <button class="ff-btn active" data-feed-filter="all">SEMUA</button>
+                  <button class="ff-btn" data-feed-filter="eskalasi">ESK</button>
+                  <button class="ff-btn" data-feed-filter="deeskalasi">DE-ESK</button>
                 </div>
                 <div id="osint-feed" style="max-height: 200px; overflow-y: auto;"></div>
 
@@ -431,7 +431,7 @@
                     id="prop-count">0 FLAGS</span></div>
                 <div class="prop-filter-row">
                   <label class="prop-toggle">
-                    <input type="checkbox" id="high-cred-filter" onchange="toggleCredFilter()" />
+                    <input type="checkbox" id="high-cred-filter" />
                     <span>Hanya ≥7 Kredibilitas</span>
                   </label>
                 </div>
@@ -439,7 +439,7 @@
 
                 <div class="card-title unverified-title" style="margin-top:15px; color:#ff8c00;">⚠️ UNVERIFIED /
                   BOCORAN</div>
-                <button class="uv-toggle" id="uv-toggle-btn" onclick="toggleUnverified()"
+                <button class="uv-toggle" id="uv-toggle-btn">
                   style="margin-bottom:5px;">TAMPILKAN</button>
                 <div id="unverified-feed" class="uv-hidden"></div>
               </div>
@@ -470,7 +470,7 @@
         <div class="rp-flash">CRITICAL ESCALATION DETECTED</div>
         <div class="rp-message" id="rp-message">Peringatan: Terjadi lonjakan probabilitas >15% pada skenario berisiko
           tinggi.</div>
-        <button class="rp-ack-btn" onclick="acknowledgeRedPhone()">ACKNOWLEDGE (DISMISS)</button>
+        <button class="rp-ack-btn" id="rp-ack-btn">ACKNOWLEDGE (DISMISS)</button>
       </div>
     </div>
   </div>

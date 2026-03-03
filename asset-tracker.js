@@ -31,6 +31,7 @@ const AssetTracker = (() => {
     // ── STATE ──────────────────────────────────────────────────────────
     const liveAssets = {};      // id → normalized asset object
     const dirtyAssets = new Set(); // IDs that changed since last render
+    const assetTimestampIndex = new Map(); // id → last-seen timestamp
     let adsbPollTimer = null;
     let aisSocket = null;
     let aisReconnectDelay = 2000;
@@ -161,6 +162,8 @@ const AssetTracker = (() => {
                     prevAsset.callsign = (ac.flight || ac.r || ac.hex || 'UNKN').trim().toUpperCase();
                     prevAsset._seenSec = ac.seen || 0;
                     prevAsset._timestamp = now;
+                    assetTimestampIndex.delete(id);
+                    assetTimestampIndex.set(id, now);
                     prevAsset.aircraftType = ac.t || prevAsset.aircraftType;
 
                     // Recompute color
@@ -208,6 +211,8 @@ const AssetTracker = (() => {
                     const cs = computeConfidence(normalized, null);
                     normalized.confidence = cs.confidence;
                     liveAssets[id] = normalized;
+                    assetTimestampIndex.delete(id);
+                    assetTimestampIndex.set(id, now);
                     dirtyAssets.add(id);
                 }
                 count++;
@@ -484,6 +489,8 @@ const AssetTracker = (() => {
             // OPTIMIZATION: Incremental count — avoid O(n) filter
             if (!prevAsset || prevAsset._source !== 'ais') aisCountCache++;
             liveAssets[id] = normalized;
+            assetTimestampIndex.delete(id);
+            assetTimestampIndex.set(id, now);
             stats.aisCount = aisCountCache;
             dirtyAssets.add(id);
         }
@@ -537,26 +544,30 @@ const AssetTracker = (() => {
     }
 
     function cleanStaleAssets() {
-        const now = Date.now();
+        const cutoff = Date.now() - STALE_THRESHOLD * 1000;
         const staleIds = [];
 
-        Object.entries(liveAssets).forEach(([id, asset]) => {
-            const ageSec = (now - asset._timestamp) / 1000;
-            if (ageSec > STALE_THRESHOLD) {
+        // O(stale) complexity:
+        // JS Map preserves insertion order. By deleting and re-inserting on update,
+        // the Map stays sorted by timestamp. We can break as soon as we hit a non-stale asset.
+        for (const [id, ts] of assetTimestampIndex) {
+            if (ts < cutoff) {
                 staleIds.push(id);
+            } else {
+                break; // Everything after this is newer (not stale)
             }
-        });
+        }
+
+        if (staleIds.length === 0) return; // early exit — kasus paling umum
 
         staleIds.forEach(id => {
             delete liveAssets[id];
-            if (typeof window.removeLiveAsset === 'function') {
-                window.removeLiveAsset(id);
-            }
+            assetTimestampIndex.delete(id);
+            if (id.startsWith('ais-')) aisCountCache = Math.max(0, aisCountCache - 1);
+            if (typeof window.removeLiveAsset === 'function') window.removeLiveAsset(id);
         });
 
-        if (staleIds.length > 0) {
-            console.log(`[Tracker] Cleaned ${staleIds.length} stale assets`);
-        }
+        console.log(`[Tracker] Cleaned ${staleIds.length} stale assets`);
     }
 
     function updateLiveCountBadge() {

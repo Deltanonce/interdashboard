@@ -3,6 +3,7 @@
 let scenarios = (typeof SCENARIOS !== 'undefined') ? SCENARIOS.map(s => ({ ...s })) : [];
 let currentThreatLevel = 4, refreshCount = 0, countdownSeconds = 300;
 let countdownTimer = null, isLoading = false;
+let _sparkCache = new Map(), _sparkCacheLen = 0; // Sparkline cache store
 let radarChart = null, currentPerspective = 'iran';
 let activeFeedFilter = 'all', credFilterOn = false, uvVisible = false;
 let lastRedPhoneTime = 0;
@@ -62,6 +63,17 @@ document.addEventListener('DOMContentLoaded', () => {
     runBootSequence().catch(e => { });
     // 15-second hard failsafe: force-hide overlay no matter what
     if (bootFailsafeTimer) clearTimeout(bootFailsafeTimer);
+    initTabEvents();
+    initToolbarEvents();
+    initAnalysisPanelEvents();
+    initRedPhoneEvents();
+    initSecurityEvents();
+    initDynamicEventDelegation();
+
+    // CSP Compliant Font Load (Replacing inline onload)
+    const fontLink = document.getElementById('font-link');
+    if (fontLink) fontLink.media = 'all';
+
     bootFailsafeTimer = setTimeout(() => {
         hideLoadingOverlay();
         const bs = document.getElementById('boot-sequence');
@@ -507,6 +519,7 @@ function saveSnapshot() {
     });
 
     SNAPSHOT_HISTORY.push(snap);
+    _sparkCache.clear(); // force rebuild setelah snapshot baru
     if (SNAPSHOT_HISTORY.length > MAX_SNAPSHOTS) {
         SNAPSHOT_HISTORY.shift(); // remove oldest
     }
@@ -528,45 +541,48 @@ function saveSnapshot() {
     }
 }
 
+// Sparkline Rendering with caching
 function buildSparkline(scenarioId) {
     if (!SNAPSHOT_HISTORY || SNAPSHOT_HISTORY.length < 2) return '';
 
-    const values = SNAPSHOT_HISTORY.map(snap =>
-        snap.probabilities[scenarioId] ?? null
-    ).filter(v => v !== null);
+    // Invalidate hanya saat snapshot baru ditambahkan
+    if (SNAPSHOT_HISTORY.length !== _sparkCacheLen) {
+        _sparkCache.clear();
+        _sparkCacheLen = SNAPSHOT_HISTORY.length;
+    }
+    if (_sparkCache.has(scenarioId)) return _sparkCache.get(scenarioId);
 
+    const values = SNAPSHOT_HISTORY.map(s => s.probabilities[scenarioId] ?? null)
+        .filter(v => v !== null);
     if (values.length < 2) return '';
 
     const w = 60, h = 18, pad = 2;
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    const min = Math.min(...values), max = Math.max(...values);
     const range = max - min || 1;
 
-    const points = values.map((v, i) => {
+    const pts = values.map((v, i) => {
         const x = pad + (i / (values.length - 1)) * (w - pad * 2);
         const y = h - pad - ((v - min) / range) * (h - pad * 2);
         return `${x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(' ');
+    });
 
-    const last = values[values.length - 1];
-    const prev = values[values.length - 2];
+    const last = values[values.length - 1], prev = values[values.length - 2];
     const trend = last > prev + 1 ? 'up' : last < prev - 1 ? 'down' : 'flat';
-    const lineColor = trend === 'up' ? '#ff3355' :
-        trend === 'down' ? '#00ff88' : '#ffd700';
+    const lineColor = trend === 'up' ? '#ff3355' : trend === 'down' ? '#00ff88' : '#ffd700';
     const arrow = trend === 'up' ? '▲' : trend === 'down' ? '▼' : '▬';
-    const arrowColor = lineColor;
+    const [lx, ly] = pts[pts.length - 1].split(',');
 
-    return `<span class="sparkline-wrap" title="Tren ${values.length} snapshot terakhir">
+    const result = `<span class="sparkline-wrap" title="Tren ${values.length} snapshot">
         <svg width="${w}" height="${h}" class="sparkline-svg">
-            <polyline points="${points}"
-                fill="none" stroke="${lineColor}"
-                stroke-width="1.5" stroke-linejoin="round"/>
-            <circle cx="${points.split(' ').pop().split(',')[0]}"
-                cy="${points.split(' ').pop().split(',')[1]}"
-                r="2" fill="${lineColor}"/>
+            <polyline points="${pts.join(' ')}"
+                fill="none" stroke="${lineColor}" stroke-width="1.5" stroke-linejoin="round"/>
+            <circle cx="${lx}" cy="${ly}" r="2" fill="${lineColor}"/>
         </svg>
-        <span class="spark-arrow" style="color:${arrowColor}">${arrow}</span>
+        <span class="spark-arrow" style="color:${lineColor}">${arrow}</span>
     </span>`;
+
+    _sparkCache.set(scenarioId, result);
+    return result;
 }
 
 function renderSnapshotPanel() {
@@ -662,7 +678,7 @@ function renderGapPanel() {
 
     el.innerHTML = INTEL_GAPS.map(gap => `
         <div class="gap-item gap-${gap.status.toLowerCase()}"
-             onclick="cycleGapStatus('${gap.id}')"
+             data-gap-id="${gap.id}"
              title="Klik untuk ubah status koleksi">
             <div class="gap-header">
                 <span class="gap-id">${gap.id}</span>
@@ -877,14 +893,14 @@ function renderScenarios() {
                 <span class="dst-label dst-unc ${uClass}">?</span><span class="dst-val ${uClass}">${dst.uncertainty}%</span>
             </div>
             <div class="scenario-footer">${tags}<span class="conf-badge ${conf}">${CLBL[conf]}</span></div>
-            ${s.challenge ? `<button class="btn-challenge" onclick="toggleChallenge('${s.id}')">⚡ CHALLENGE THIS ANALYSIS <span style="float:right;font-size:8px;opacity:0.5">(DEVIL'S ADVOCATE)</span></button><div class="challenge-box" id="cb-${s.id}"><div class="cb-label">ACH HIGHLIGHT <span>(AI Red Team)</span></div>${esc(s.challenge)}</div>` : ''}
+            ${s.challenge ? `<button class="btn-challenge" data-challenge-id="${s.id}">⚡ CHALLENGE THIS ANALYSIS <span style="float:right;font-size:8px;opacity:0.5">(DEVIL'S ADVOCATE)</span></button><div class="challenge-box" id="cb-${s.id}"><div class="cb-label">ACH HIGHLIGHT <span>(AI Red Team)</span></div>${esc(s.challenge)}</div>` : ''}
         </div>`;
 
         if (el) el.insertAdjacentHTML('beforeend', html);
         if (topScenariosEl && top3Ids.includes(s.id)) {
             const htmlTop = html
                 .replace(`id="cb-${s.id}"`, `id="cb-${s.id}-top"`)
-                .replace(`toggleChallenge('${s.id}')`, `toggleChallenge('${s.id}-top')`);
+                .replace(`data-challenge-id="${s.id}"`, `data-challenge-id="${s.id}-top"`);
             topScenariosEl.insertAdjacentHTML('beforeend', htmlTop);
         }
     });
@@ -904,12 +920,15 @@ function renderDeltaTracker() {
 
 // ===== SECURITY & ESCAPING =====
 function esc(str) {
-    if (!str) return '';
-    return String(str).replace(/[&<>"'`=\/]/g, function (s) {
-        return {
-            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;', '`': '&#x60;', '=': '&#x3D;'
-        }[s];
-    });
+    if (str == null) return '';
+    return String(str)
+        .replace(/[&<>"'`=\/]/g, s => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;',
+            '"': '&quot;', "'": '&#39;', '/': '&#x2F;',
+            '`': '&#x60;', '=': '&#x3D;'
+        })[s])
+        // Strip zero-width & invisible unicode control characters
+        .replace(/[\u200B-\u200D\uFEFF\u2028\u2029\u0000-\u001F\u007F]/g, '');
 }
 
 // ===== NEWS =====
@@ -1210,6 +1229,19 @@ function renderNetAssessTable() {
     </tr>`).join('')}</tbody>
   </table>`;
     document.getElementById('netassess-summary').innerHTML = '<strong>Net Assessment:</strong> AS memiliki superioritas absolut di hampir semua dimensi. Iran memimpin di <strong>Proxy Networks (85/100)</strong> sebagai asymmetric equalizer. Israel unggul di <strong>Siber (82)</strong> dan <strong>Presisi Militer (78)</strong>. Konflik langsung Iran vs Israel: Israel menang militer konvensional, namun Iran dapat mengeksploitasi proxy untuk meningkatkan biaya secara signifikan.';
+}
+function initRedPhoneEvents() {
+    const rpAckBtn = document.getElementById('rp-ack-btn');
+    if (rpAckBtn) rpAckBtn.addEventListener('click', acknowledgeRedPhone);
+}
+
+function initSecurityEvents() {
+    const credFilter = document.getElementById('high-cred-filter');
+    if (credFilter) {
+        credFilter.addEventListener('change', () => {
+            if (typeof toggleCredFilter === 'function') toggleCredFilter();
+        });
+    }
 }
 function initRadarChart() {
     const canvas = document.getElementById('radar-chart');
