@@ -261,8 +261,13 @@ const AssetTracker = (() => {
     function connectAis() {
         const apiKey = (typeof AISSTREAM_API_KEY !== 'undefined' && AISSTREAM_API_KEY) ? AISSTREAM_API_KEY : null;
         const PLACEHOLDER_KEY = 'GANTI_DENGAN_API_KEY_ANDA';
-        if (!apiKey || apiKey.length < 10 || apiKey === PLACEHOLDER_KEY) {
-            console.warn('[AIS] API key belum dikonfigurasi. Set AISSTREAM_API_KEY di config.js. Maritime tracking dinonaktifkan.');
+        const hasClientKey = !!(apiKey && apiKey.length >= 10 && apiKey !== PLACEHOLDER_KEY);
+
+        // Default to HTTP relay so ship tracking can still run without exposing client API key.
+        if (!hasClientKey) {
+            aisMode = 'http';
+            console.warn('[AIS] API key client tidak diset. Mencoba mode HTTP relay server (/api/ais-poll).');
+            startAisPolling();
             return;
         }
 
@@ -388,7 +393,7 @@ const AssetTracker = (() => {
         aisPollTimer = setInterval(() => {
             if (isRunning) pollAisHttp();
         }, AIS_POLL_INTERVAL);
-        console.log('[AIS] HTTP polling started (every 10s via /api/ais-poll)');
+        console.log('[AIS] HTTP polling started (every 5s via /api/ais-poll)');
     }
 
     function updateAisStatusDot(connected) {
