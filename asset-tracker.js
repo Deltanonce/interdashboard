@@ -255,14 +255,16 @@ const AssetTracker = (() => {
     const AIS_POLL_ENDPOINT = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL.replace(/\/api$/, '') + '/api/ais-poll' : '/api/ais-poll';
     const AIS_POLL_INTERVAL = 5000; // 5 seconds for faster updates
     let aisPollTimer = null;
-    let aisMode = 'http'; // Force HTTP mode — browser WS blocked (code 1006) from http:// origins
+    let aisMode = 'ws'; // Try direct WebSocket first, then fallback to HTTP relay
     let aisMessageCount = 0;
 
     function connectAis() {
         const apiKey = (typeof AISSTREAM_API_KEY !== 'undefined' && AISSTREAM_API_KEY) ? AISSTREAM_API_KEY : null;
         const PLACEHOLDER_KEY = 'GANTI_DENGAN_API_KEY_ANDA';
         if (!apiKey || apiKey.length < 10 || apiKey === PLACEHOLDER_KEY) {
-            console.warn('[AIS] API key belum dikonfigurasi. Set AISSTREAM_API_KEY di config.js. Maritime tracking dinonaktifkan.');
+            console.warn('[AIS] API key browser belum dikonfigurasi. Mencoba mode HTTP relay server (/api/ais-poll)...');
+            aisMode = 'http';
+            startAisPolling();
             return;
         }
 
@@ -388,7 +390,7 @@ const AssetTracker = (() => {
         aisPollTimer = setInterval(() => {
             if (isRunning) pollAisHttp();
         }, AIS_POLL_INTERVAL);
-        console.log('[AIS] HTTP polling started (every 10s via /api/ais-poll)');
+        console.log('[AIS] HTTP polling started (every 5s via /api/ais-poll)');
     }
 
     function updateAisStatusDot(connected) {
