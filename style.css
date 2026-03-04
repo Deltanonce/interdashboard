@@ -4266,6 +4266,24 @@ body {
   align-items: center;
   justify-content: center;
   transition: transform 0.3s ease;
+  will-change: transform;
+  animation: rtBreath 2.4s ease-in-out infinite;
+}
+
+.wv-vessel-target {
+  will-change: transform;
+  animation: rtSweep 2.8s linear infinite;
+}
+
+@keyframes rtBreath {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(0, 212, 255, 0.35)); }
+  50% { filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.7)); }
+}
+
+@keyframes rtSweep {
+  0% { opacity: 0.75; }
+  50% { opacity: 1; }
+  100% { opacity: 0.75; }
 }
 
 .mil-asset-svg svg {
