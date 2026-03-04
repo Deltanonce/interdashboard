@@ -1236,8 +1236,38 @@ function computeFusionScore() {
 function computePredInterval(pct, nActiveIndicators) {
     const p = Math.max(0.02, Math.min(0.97, pct / 100));
     const n = Math.max(1, nActiveIndicators);
-    const marginPct = Math.round(196 * Math.sqrt(p * (1 - p) / n));
+    const marginPct = Math.round(1.96 * 100 * Math.sqrt(p * (1 - p) / n));
     return { lo: Math.max(2, pct - marginPct), hi: Math.min(97, pct + marginPct), margin: marginPct };
+}
+
+function indicatorPressure(indicator) {
+    if (!indicator || typeof indicator.val !== 'number' || typeof indicator.base !== 'number') return 0;
+    const range = Math.max(1, Math.abs((indicator.triggerThresh ?? indicator.base) - indicator.base));
+    const signed = indicator.inverse
+        ? (indicator.base - indicator.val) / range
+        : (indicator.val - indicator.base) / range;
+    return Math.max(-2.2, Math.min(2.2, signed));
+}
+
+function getSignalQuality() {
+    if (typeof VERIFIED_NEWS === 'undefined' || !Array.isArray(VERIFIED_NEWS) || VERIFIED_NEWS.length === 0
+        || typeof SIGINT_SOURCES === 'undefined' || !Array.isArray(SIGINT_SOURCES) || SIGINT_SOURCES.length === 0) {
+        return 0.6;
+    }
+
+    const avgCred = VERIFIED_NEWS.reduce((s, n) => s + (n.cred || 0), 0) / VERIFIED_NEWS.length;
+    const avgStrength = SIGINT_SOURCES.reduce((s, src) => s + (src.strength || 0), 0) / SIGINT_SOURCES.length;
+    const anomalyRatio = SIGINT_SOURCES.filter(src => src.anomaly).length / SIGINT_SOURCES.length;
+    const quality = (avgCred / 10) * 0.55 + (avgStrength / 100) * 0.45 - anomalyRatio * 0.25;
+    return Math.max(0.35, Math.min(0.95, quality));
+}
+
+function blendedProbability(basePct, evidenceScore, quality, opts = {}) {
+    const priorWeight = opts.priorWeight ?? 0.45;
+    const evidenceWeight = opts.evidenceWeight ?? 16;
+    const adjusted = basePct + evidenceScore * evidenceWeight * quality;
+    const blended = basePct * priorWeight + adjusted * (1 - priorWeight);
+    return Math.round(Math.max(5, Math.min(95, blended)));
 }
 
 function computePredictiveAnalytics() {
@@ -1246,26 +1276,43 @@ function computePredictiveAnalytics() {
     const sc = id => { const s = scenarios.find(x => x.id === id); return s ? s.current : 0; };
     const iwCount = status => IW_INDICATORS.filter(i => i.status === status).length;
 
+    const quality = getSignalQuality();
     const milAvg = (sc('S4') + sc('S5') + sc('S6') + sc('S7')) / 4;
-    const p1 = Math.min(95, Math.max(5, Math.round(milAvg * 0.55 + iwCount('triggered') * 2.5 + iwCount('watch') * 0.8)));
+    const milEvidence = IW_INDICATORS
+        .filter(i => i.cat === 'MILITER' || i.cat === 'INTELIJEN')
+        .reduce((sum, i) => sum + indicatorPressure(i), 0) / 8;
+    const milBase = milAvg * 0.56 + iwCount('triggered') * 2.2 + iwCount('watch') * 0.6;
+    const p1 = blendedProbability(milBase, milEvidence, quality, { priorWeight: 0.42, evidenceWeight: 18 });
     const p1Conf = p1 > 55 ? 'HIGH' : p1 > 30 ? 'MED' : 'LOW';
     const p1Label = p1 >= 75 ? 'HAMPIR PASTI' : p1 >= 55 ? 'TINGGI' : p1 >= 35 ? 'MUNGKIN' : p1 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
 
-    const p2 = Math.min(95, Math.max(5, Math.round(sc('S9') * 0.55 + sc('S8') * 0.30 + sc('S7') * 0.15)));
+    const econEvidence = IW_INDICATORS
+        .filter(i => i.cat === 'EKONOMI' || i.cr === 'CR-005')
+        .reduce((sum, i) => sum + indicatorPressure(i), 0) / 5;
+    const p2Base = sc('S9') * 0.50 + sc('S8') * 0.34 + sc('S7') * 0.16;
+    const p2 = blendedProbability(p2Base, econEvidence, quality, { priorWeight: 0.48, evidenceWeight: 14 });
     const p2Conf = sc('S9') > 45 ? 'HIGH' : sc('S9') > 30 ? 'MED' : 'LOW';
     const p2Label = p2 >= 75 ? 'HAMPIR PASTI' : p2 >= 55 ? 'TINGGI' : p2 >= 35 ? 'MUNGKIN' : p2 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
 
     const cr007 = IW_INDICATORS.find(i => i.cr === 'CR-007');
     const cr014 = IW_INDICATORS.find(i => i.cr === 'CR-014');
-    const iaeatriggered = (cr007 && cr007.status === 'triggered') ? 30 : (cr007 && cr007.status === 'watch') ? 15 : 5;
-    const fordowBonus = (cr014 && cr014.status === 'triggered') ? 20 : (cr014 && cr014.status === 'watch') ? 10 : 0;
-    const p3 = Math.min(97, Math.max(40, 45 + iaeatriggered + fordowBonus));
+    const iaeatriggered = (cr007 && cr007.status === 'triggered') ? 26 : (cr007 && cr007.status === 'watch') ? 12 : 3;
+    const fordowBonus = (cr014 && cr014.status === 'triggered') ? 18 : (cr014 && cr014.status === 'watch') ? 8 : 0;
+    const nukeEvidence = IW_INDICATORS
+        .filter(i => ['CR-007', 'CR-013', 'CR-014'].includes(i.cr))
+        .reduce((sum, i) => sum + indicatorPressure(i), 0) / 3;
+    const p3Base = 44 + iaeatriggered + fordowBonus;
+    const p3 = Math.max(35, blendedProbability(p3Base, nukeEvidence, quality, { priorWeight: 0.38, evidenceWeight: 12 }));
     const p3Conf = p3 > 70 ? 'HIGH' : 'MED';
     const p3Label = p3 >= 75 ? 'HAMPIR PASTI' : p3 >= 55 ? 'TINGGI' : p3 >= 35 ? 'MUNGKIN' : 'RENDAH';
 
     const dipAvg = (sc('S1') + sc('S2')) / 2;
     const milPressure = (sc('S4') + sc('S5')) / 2;
-    const p4 = Math.min(85, Math.max(5, Math.round(dipAvg * 0.60 - milPressure * 0.15 + 5)));
+    const dipEvidence = IW_INDICATORS
+        .filter(i => i.cat === 'DIPLOMATIK')
+        .reduce((sum, i) => sum + indicatorPressure(i), 0) / 3;
+    const p4Base = dipAvg * 0.62 - milPressure * 0.17 + 8;
+    const p4 = Math.min(85, blendedProbability(p4Base, -dipEvidence, quality, { priorWeight: 0.50, evidenceWeight: 11 }));
     const p4Conf = dipAvg > 40 ? 'MED' : 'LOW';
     const p4Label = p4 >= 75 ? 'HAMPIR PASTI' : p4 >= 55 ? 'TINGGI' : p4 >= 35 ? 'MUNGKIN' : p4 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
 
@@ -1274,10 +1321,10 @@ function computePredictiveAnalytics() {
     const iwNuke = IW_INDICATORS.filter(i => ['CR-007','CR-013','CR-014'].includes(i.cr) && i.status !== 'clear').length;
     const iwDip = IW_INDICATORS.filter(i => ['CR-006','CR-008'].includes(i.cr) && i.status !== 'clear').length;
 
-    const int1 = computePredInterval(p1, iwMil);
-    const int2 = computePredInterval(p2, iwEcon);
-    const int3 = computePredInterval(p3, iwNuke);
-    const int4 = computePredInterval(p4, Math.max(1, iwDip));
+    const int1 = computePredInterval(p1, Math.max(2, Math.round(iwMil * quality + 1)));
+    const int2 = computePredInterval(p2, Math.max(2, Math.round(iwEcon * quality + 1)));
+    const int3 = computePredInterval(p3, Math.max(2, Math.round(iwNuke * quality + 1)));
+    const int4 = computePredInterval(p4, Math.max(2, Math.round(iwDip * quality + 1)));
 
     return [
         { label: 'Eskalasi militer kinetik dalam 72 jam', pct: p1, lo: int1.lo, hi: int1.hi, levelLabel: p1Label, conf: p1Conf, confClass: p1Conf.toLowerCase() },
