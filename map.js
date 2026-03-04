@@ -339,6 +339,39 @@ function ensureLiveLayers() {
     }
 }
 
+function animateMarkerTo(marker, fromLatLng, toLatLng, durationMs = 1000) {
+    if (!marker || !fromLatLng || !toLatLng) return;
+    const startLat = fromLatLng.lat;
+    const startLng = fromLatLng.lng;
+    const endLat = toLatLng.lat;
+    const endLng = toLatLng.lng;
+
+    if (Math.abs(endLat - startLat) < 0.00001 && Math.abs(endLng - startLng) < 0.00001) {
+        marker.setLatLng(toLatLng);
+        return;
+    }
+
+    const startTs = performance.now();
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+    const tick = (ts) => {
+        const progress = Math.min(1, (ts - startTs) / durationMs);
+        const eased = easeOutCubic(progress);
+        marker.setLatLng([
+            startLat + (endLat - startLat) * eased,
+            startLng + (endLng - startLng) * eased
+        ]);
+        if (progress < 1) {
+            marker.__animFrame = requestAnimationFrame(tick);
+        } else {
+            marker.__animFrame = null;
+        }
+    };
+
+    if (marker.__animFrame) cancelAnimationFrame(marker.__animFrame);
+    marker.__animFrame = requestAnimationFrame(tick);
+}
+
 // Build tooltip with spoofing badge + aircraft type
 function buildLiveTooltip(asset) {
     const confColor = asset.confidence >= 90 ? '#2ed573' : asset.confidence >= 70 ? '#ffa502' : '#ff4757';
@@ -368,8 +401,9 @@ window.addOrUpdateLiveAsset = function (asset) {
     const existing = liveMarkerRefs[asset.id];
 
     if (existing) {
-        // Update position
-        existing.marker.setLatLng([asset.lat, asset.lon]);
+        // Smooth realtime motion between telemetry updates
+        const currentLatLng = existing.marker.getLatLng();
+        animateMarkerTo(existing.marker, currentLatLng, L.latLng(asset.lat, asset.lon), 900);
 
         // OPTIMIZATION: Only update icon if heading changed (> 3°) — avoids SVG DOM churn
         const headingDelta = Math.abs(asset.heading - (existing.lastHeading || 0));
@@ -451,6 +485,7 @@ window.removeLiveAsset = function (id) {
 
     const layer = ref.source === 'ais' ? liveAisLayer : liveAdsbLayer;
     if (layer) {
+        if (ref.marker && ref.marker.__animFrame) cancelAnimationFrame(ref.marker.__animFrame);
         if (ref.marker) ref.marker.remove();
         ref.trailSegments.forEach(seg => {
             if (seg) seg.remove();
