@@ -20,6 +20,36 @@ const MIME_TYPES = {
     '.woff2': 'font/woff2',
 };
 
+
+function proxySatelliteTle(req, res) {
+    const options = {
+        hostname: 'celestrak.org',
+        path: '/NORAD/elements/gp.php?GROUP=active&FORMAT=tle',
+        method: 'GET',
+        headers: { 'User-Agent': 'IntelDashboard/4.0' }
+    };
+
+    const proxyReq = https.request(options, (proxyRes) => {
+        let data = [];
+        proxyRes.on('data', chunk => data.push(chunk));
+        proxyRes.on('end', () => {
+            const body = Buffer.concat(data);
+            res.writeHead(200, {
+                'Content-Type': 'text/plain; charset=utf-8',
+                'Access-Control-Allow-Origin': '*'
+            });
+            res.end(body);
+        });
+    });
+
+    proxyReq.on('error', (err) => {
+        res.writeHead(502, { 'Content-Type': 'text/plain' });
+        res.end('Satellite proxy error: ' + err.message);
+    });
+
+    proxyReq.end();
+}
+
 function proxyAdsb(req, res) {
     const options = {
         hostname: 'api.adsb.lol',
@@ -57,6 +87,11 @@ const server = http.createServer((req, res) => {
         return proxyAdsb(req, res);
     }
 
+    // CORS proxy for satellite TLE feed
+    if (url === '/api/sat-tle') {
+        return proxySatelliteTle(req, res);
+    }
+
     // Static file serving
     let filePath = path.join(ROOT, url === '/' ? 'index.html' : url);
     const ext = path.extname(filePath);
@@ -76,4 +111,5 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
     console.log(`SERVER_READY on http://localhost:${PORT}/`);
     console.log(`ADS-B Proxy: http://localhost:${PORT}/api/adsb-mil`);
+    console.log(`SAT Proxy: http://localhost:${PORT}/api/sat-tle`);
 });
