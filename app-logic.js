@@ -1240,34 +1240,107 @@ function computePredInterval(pct, nActiveIndicators) {
     return { lo: Math.max(2, pct - marginPct), hi: Math.min(97, pct + marginPct), margin: marginPct };
 }
 
+function sigmoid(z) {
+    return 1 / (1 + Math.exp(-z));
+}
+
+function mean(list) {
+    if (!Array.isArray(list) || list.length === 0) return 0;
+    return list.reduce((s, n) => s + n, 0) / list.length;
+}
+
+function clamp(val, lo, hi) {
+    return Math.min(hi, Math.max(lo, val));
+}
+
+function scenarioDelta(id) {
+    const s = scenarios.find(x => x.id === id);
+    if (!s) return 0;
+    const baseline = typeof s.baseline === 'number' ? s.baseline : (typeof s.base === 'number' ? s.base : s.current || 0);
+    return (s.current || 0) - baseline;
+}
+
+function confidenceFromDrivers(pct, spread, evidenceCount) {
+    const centered = Math.abs(pct - 50) / 50;
+    const stability = clamp(1 - (spread / 40), 0, 1);
+    const evidence = clamp(evidenceCount / 5, 0, 1);
+    const confidenceScore = (centered * 0.4) + (stability * 0.35) + (evidence * 0.25);
+    return confidenceScore >= 0.68 ? 'HIGH' : confidenceScore >= 0.42 ? 'MED' : 'LOW';
+}
+
+function probabilityLabel(pct) {
+    if (pct >= 78) return 'HAMPIR PASTI';
+    if (pct >= 60) return 'TINGGI';
+    if (pct >= 40) return 'MUNGKIN';
+    if (pct >= 24) return 'RENDAH';
+    return 'SANGAT RENDAH';
+}
+
 function computePredictiveAnalytics() {
     if (typeof IW_INDICATORS === 'undefined' || !Array.isArray(IW_INDICATORS)) return [];
 
     const sc = id => { const s = scenarios.find(x => x.id === id); return s ? s.current : 0; };
     const iwCount = status => IW_INDICATORS.filter(i => i.status === status).length;
 
-    const milAvg = (sc('S4') + sc('S5') + sc('S6') + sc('S7')) / 4;
-    const p1 = Math.min(95, Math.max(5, Math.round(milAvg * 0.55 + iwCount('triggered') * 2.5 + iwCount('watch') * 0.8)));
-    const p1Conf = p1 > 55 ? 'HIGH' : p1 > 30 ? 'MED' : 'LOW';
-    const p1Label = p1 >= 75 ? 'HAMPIR PASTI' : p1 >= 55 ? 'TINGGI' : p1 >= 35 ? 'MUNGKIN' : p1 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
+    const totalIw = Math.max(1, IW_INDICATORS.length);
+    const triggeredRatio = iwCount('triggered') / totalIw;
+    const watchRatio = iwCount('watch') / totalIw;
+    const clearRatio = iwCount('clear') / totalIw;
 
-    const p2 = Math.min(95, Math.max(5, Math.round(sc('S9') * 0.55 + sc('S8') * 0.30 + sc('S7') * 0.15)));
-    const p2Conf = sc('S9') > 45 ? 'HIGH' : sc('S9') > 30 ? 'MED' : 'LOW';
-    const p2Label = p2 >= 75 ? 'HAMPIR PASTI' : p2 >= 55 ? 'TINGGI' : p2 >= 35 ? 'MUNGKIN' : p2 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
+    const avgVerifiedCred = (typeof VERIFIED_NEWS !== 'undefined' && Array.isArray(VERIFIED_NEWS) && VERIFIED_NEWS.length)
+        ? mean(VERIFIED_NEWS.map(n => n.cred || 0)) : 7;
+    const avgPropCred = (typeof PROPAGANDA_NEWS !== 'undefined' && Array.isArray(PROPAGANDA_NEWS) && PROPAGANDA_NEWS.length)
+        ? mean(PROPAGANDA_NEWS.map(n => n.cred || 0)) : 2;
+    const infoQuality = clamp(((avgVerifiedCred - avgPropCred) / 10), -0.5, 0.75);
+
+    const milAvg = mean([sc('S4'), sc('S5'), sc('S6'), sc('S7')]);
+    const milMomentum = mean([scenarioDelta('S4'), scenarioDelta('S5'), scenarioDelta('S6'), scenarioDelta('S7')]);
+    const milInput =
+        -1.35
+        + (milAvg / 100) * 3.1
+        + (milMomentum / 20) * 0.9
+        + triggeredRatio * 1.8
+        + watchRatio * 0.9
+        + infoQuality * 0.55;
+    const p1 = Math.round(clamp(sigmoid(milInput) * 100, 4, 96));
+
+    const oilPressure = mean([sc('S9'), sc('S8')]);
+    const oilMomentum = mean([scenarioDelta('S9'), scenarioDelta('S8')]);
+    const p2Input =
+        -1.6
+        + (oilPressure / 100) * 3.4
+        + (sc('S7') / 100) * 0.9
+        + (oilMomentum / 25) * 0.8
+        + triggeredRatio * 1.1
+        + infoQuality * 0.45;
+    const p2 = Math.round(clamp(sigmoid(p2Input) * 100, 4, 96));
 
     const cr007 = IW_INDICATORS.find(i => i.cr === 'CR-007');
     const cr014 = IW_INDICATORS.find(i => i.cr === 'CR-014');
-    const iaeatriggered = (cr007 && cr007.status === 'triggered') ? 30 : (cr007 && cr007.status === 'watch') ? 15 : 5;
-    const fordowBonus = (cr014 && cr014.status === 'triggered') ? 20 : (cr014 && cr014.status === 'watch') ? 10 : 0;
-    const p3 = Math.min(97, Math.max(40, 45 + iaeatriggered + fordowBonus));
-    const p3Conf = p3 > 70 ? 'HIGH' : 'MED';
-    const p3Label = p3 >= 75 ? 'HAMPIR PASTI' : p3 >= 55 ? 'TINGGI' : p3 >= 35 ? 'MUNGKIN' : 'RENDAH';
+    const nukeSignal =
+        (cr007 && cr007.status === 'triggered') ? 1 : (cr007 && cr007.status === 'watch') ? 0.55 : 0.15;
+    const fordowSignal =
+        (cr014 && cr014.status === 'triggered') ? 0.8 : (cr014 && cr014.status === 'watch') ? 0.45 : 0.05;
+    const p3Input =
+        -0.45
+        + nukeSignal * 1.35
+        + fordowSignal * 1.2
+        + triggeredRatio * 0.9
+        + (scenarioDelta('S4') / 25) * 0.35;
+    const p3 = Math.round(clamp(sigmoid(p3Input) * 100, 10, 97));
 
     const dipAvg = (sc('S1') + sc('S2')) / 2;
     const milPressure = (sc('S4') + sc('S5')) / 2;
-    const p4 = Math.min(85, Math.max(5, Math.round(dipAvg * 0.60 - milPressure * 0.15 + 5)));
-    const p4Conf = dipAvg > 40 ? 'MED' : 'LOW';
-    const p4Label = p4 >= 75 ? 'HAMPIR PASTI' : p4 >= 55 ? 'TINGGI' : p4 >= 35 ? 'MUNGKIN' : p4 >= 20 ? 'RENDAH' : 'SANGAT RENDAH';
+    const dipMomentum = mean([scenarioDelta('S1'), scenarioDelta('S2')]);
+    const p4Input =
+        -1.8
+        + (dipAvg / 100) * 3.0
+        + (dipMomentum / 20) * 0.85
+        - (milPressure / 100) * 1.55
+        - triggeredRatio * 1.25
+        - (1 - clearRatio) * 0.4
+        + infoQuality * 0.35;
+    const p4 = Math.round(clamp(sigmoid(p4Input) * 100, 3, 90));
 
     const iwMil = IW_INDICATORS.filter(i => ['CR-001','CR-002','CR-003','CR-005'].includes(i.cr) && i.status !== 'clear').length;
     const iwEcon = IW_INDICATORS.filter(i => ['CR-009','CR-010','CR-012'].includes(i.cr) && i.status !== 'clear').length;
@@ -1278,6 +1351,16 @@ function computePredictiveAnalytics() {
     const int2 = computePredInterval(p2, iwEcon);
     const int3 = computePredInterval(p3, iwNuke);
     const int4 = computePredInterval(p4, Math.max(1, iwDip));
+
+    const p1Conf = confidenceFromDrivers(p1, int1.hi - int1.lo, iwMil);
+    const p2Conf = confidenceFromDrivers(p2, int2.hi - int2.lo, iwEcon);
+    const p3Conf = confidenceFromDrivers(p3, int3.hi - int3.lo, iwNuke);
+    const p4Conf = confidenceFromDrivers(p4, int4.hi - int4.lo, iwDip);
+
+    const p1Label = probabilityLabel(p1);
+    const p2Label = probabilityLabel(p2);
+    const p3Label = probabilityLabel(p3);
+    const p4Label = probabilityLabel(p4);
 
     return [
         { label: 'Eskalasi militer kinetik dalam 72 jam', pct: p1, lo: int1.lo, hi: int1.hi, levelLabel: p1Label, conf: p1Conf, confClass: p1Conf.toLowerCase() },
