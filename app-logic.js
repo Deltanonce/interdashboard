@@ -900,10 +900,36 @@ function buildAnalystSummary() {
     const triggered = IW_INDICATORS.filter(i => i.status === 'triggered');
     const watched = IW_INDICATORS.filter(i => i.status === 'watch');
 
+    const confMap = { low: 0.72, med: 0.84, high: 0.94, spec: 0.55 };
+    const bounded = (v, min, max) => Math.max(min, Math.min(max, v));
+    const avg = arr => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+
     const topMover = scenarios.map(s => ({ ...s, absDelta: Math.abs(s.current - s.baseline) }))
         .sort((a, b) => b.absDelta - a.absDelta)[0];
     const topMilitary = scenarios.filter(s => s.group === 'militer').sort((a, b) => b.current - a.current)[0];
     const topDiplomasi = scenarios.filter(s => s.group === 'diplomasi').sort((a, b) => b.current - a.current)[0];
+
+    const weightedScenarios = scenarios.map(s => {
+        const delta = s.current - s.baseline;
+        const conf = confMap[s.confBase] ?? 0.78;
+        const prob = bounded(s.current / 100, 0, 1);
+        const momentum = bounded(Math.abs(delta) / 25, 0, 1);
+        return {
+            ...s,
+            delta,
+            conf,
+            riskScore: (0.55 * prob + 0.3 * conf + 0.15 * momentum) * 100
+        };
+    });
+    const highestRisk = weightedScenarios.sort((a, b) => b.riskScore - a.riskScore)[0];
+
+    const verified = (typeof VERIFIED_NEWS !== 'undefined' && Array.isArray(VERIFIED_NEWS)) ? VERIFIED_NEWS : [];
+    const propaganda = (typeof PROPAGANDA_NEWS !== 'undefined' && Array.isArray(PROPAGANDA_NEWS)) ? PROPAGANDA_NEWS : [];
+    const recentVerified = verified.filter(n => (n.time ?? 999) <= 90);
+    const intelMix = ['OSINT', 'SIGINT', 'HUMINT', 'IMINT', 'COMINT'].filter(t => recentVerified.some(n => n.intel === t));
+    const meanCred = avg(recentVerified.map(n => n.cred || 0));
+    const lowCredPropaganda = propaganda.filter(n => (n.cred || 0) < 5).length;
+    const corroboration = bounded((intelMix.length * 12) + (meanCred * 4) - (lowCredPropaganda * 1.5), 8, 96);
 
     let achWinner = null;
     if (typeof ACH_HYPOTHESES !== 'undefined' && typeof ACH_EVIDENCE !== 'undefined') {
@@ -935,6 +961,11 @@ function buildAnalystSummary() {
         parts.push(`Delta terbesar: skenario "${topMover.name}" ${dir} ${sign}${delta}% dari baseline — menjadi focal point perhatian analis sesi ini.`);
     }
 
+    if (highestRisk) {
+        const riskBand = highestRisk.riskScore >= 78 ? 'HIGH-RISK' : highestRisk.riskScore >= 62 ? 'ELEVATED' : 'MODERATE';
+        parts.push(`Model komposit menilai ${highestRisk.id} sebagai prioritas ${riskBand} (risk score ${Math.round(highestRisk.riskScore)}/100; confidence ${Math.round(highestRisk.conf * 100)}%).`);
+    }
+
     if (topMilitary && topDiplomasi) {
         const tension = topMilitary.current - topDiplomasi.current;
         if (tension > 20) {
@@ -948,6 +979,10 @@ function buildAnalystSummary() {
 
     if (achWinner) {
         parts.push(`ACH saat ini menunjuk hipotesis paling konsisten: ${achWinner.name} (${achWinner.incons} inkonsistensi berbobot). Prioritaskan collection requirement pada indikator diagnostik untuk konfirmasi.`);
+    }
+
+    if (recentVerified.length > 0) {
+        parts.push(`Kualitas evidensi: ${recentVerified.length} laporan terbaru tervalidasi, rerata kredibilitas ${meanCred.toFixed(1)}/10, cakupan intel ${intelMix.join('/') || 'terbatas'}, dan skor corroboration ${Math.round(corroboration)}/100.`);
     }
 
     return parts.join(' ');
