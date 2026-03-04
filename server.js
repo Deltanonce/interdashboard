@@ -25,6 +25,7 @@ function proxyAdsb(req, res) {
         hostname: 'api.adsb.lol',
         path: '/v2/mil',
         method: 'GET',
+        timeout: 8000,
         headers: { 'User-Agent': 'IntelDashboard/4.0' }
     };
 
@@ -33,7 +34,7 @@ function proxyAdsb(req, res) {
         proxyRes.on('data', chunk => data.push(chunk));
         proxyRes.on('end', () => {
             const body = Buffer.concat(data);
-            res.writeHead(200, {
+            res.writeHead(proxyRes.statusCode || 502, {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
             });
@@ -41,31 +42,63 @@ function proxyAdsb(req, res) {
         });
     });
 
-    proxyReq.on('error', (err) => {
+    proxyReq.on('timeout', () => {
+        proxyReq.destroy(new Error('Upstream timeout'));
+    });
+
+    proxyReq.on('error', () => {
         res.writeHead(502, { 'Content-Type': 'text/plain' });
-        res.end('Proxy error: ' + err.message);
+        res.end('Proxy error');
     });
 
     proxyReq.end();
 }
 
-const server = http.createServer((req, res) => {
-    const url = req.url.split('?')[0];
+function resolveSafePath(urlPath) {
+    let decodedPath;
+    try {
+        decodedPath = decodeURIComponent(urlPath);
+    } catch {
+        return null;
+    }
+    const relativePath = decodedPath.replace(/^\/+/, '');
+    const requestedPath = relativePath === '' ? 'index.html' : relativePath;
+    const absolutePath = path.resolve(ROOT, requestedPath);
 
-    // CORS proxy for ADS-B
-    if (url === '/api/adsb-mil') {
+    if (!absolutePath.startsWith(path.resolve(ROOT) + path.sep) && absolutePath !== path.resolve(ROOT, 'index.html')) {
+        return null;
+    }
+
+    return absolutePath;
+}
+
+const server = http.createServer((req, res) => {
+    const requestPath = (req.url || '').split('?')[0];
+
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+        res.writeHead(405, { 'Content-Type': 'text/plain' });
+        res.end('Method not allowed');
+        return;
+    }
+
+    if (requestPath === '/api/adsb-mil') {
         return proxyAdsb(req, res);
     }
 
-    // Static file serving
-    let filePath = path.join(ROOT, url === '/' ? 'index.html' : url);
+    const filePath = resolveSafePath(requestPath);
+    if (!filePath) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('Forbidden');
+        return;
+    }
+
     const ext = path.extname(filePath);
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
     fs.readFile(filePath, (err, data) => {
         if (err) {
             res.writeHead(404, { 'Content-Type': 'text/plain' });
-            res.end('Not found: ' + filePath);
+            res.end('Not found');
             return;
         }
         res.writeHead(200, { 'Content-Type': contentType });
