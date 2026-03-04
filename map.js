@@ -328,6 +328,14 @@ window.toggleLayer = function (cat, el) {
 let liveAdsbLayer = null;
 let liveAisLayer = null;
 let liveMarkerRefs = {}; // id → { marker, glow, trailSegments[], lastHeading, lastTrailLen, source }
+const TRACK_SMOOTHING = {
+    minDurationMs: 400,
+    maxDurationMs: 3000,
+    maxMoveKmForSmooth: 120,
+    adsbBaseDurationMs: 1200,
+    aisBaseDurationMs: 900,
+    jumpThresholdKm: 200
+};
 
 function ensureLiveLayers() {
     if (!leafletMap) return;
@@ -337,6 +345,68 @@ function ensureLiveLayers() {
     if (!liveAisLayer) {
         liveAisLayer = L.featureGroup().addTo(leafletMap);
     }
+}
+
+function haversineDistanceKm(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+}
+
+function smoothMoveMarker(ref, nextLat, nextLon, asset) {
+    if (!ref || !ref.marker) return;
+
+    const current = ref.marker.getLatLng();
+    const distKm = haversineDistanceKm(current.lat, current.lng, nextLat, nextLon);
+
+    // For implausible jumps, update immediately (already handled upstream as low confidence/spoofing).
+    if (!isFinite(distKm) || distKm <= 0 || distKm > TRACK_SMOOTHING.jumpThresholdKm) {
+        if (ref.animFrame) cancelAnimationFrame(ref.animFrame);
+        ref.animFrame = null;
+        ref.marker.setLatLng([nextLat, nextLon]);
+        return;
+    }
+
+    const baseDuration = asset && asset._source === 'ais'
+        ? TRACK_SMOOTHING.aisBaseDurationMs
+        : TRACK_SMOOTHING.adsbBaseDurationMs;
+    const distFactor = Math.min(1, distKm / TRACK_SMOOTHING.maxMoveKmForSmooth);
+    const rawDuration = baseDuration * (0.35 + distFactor * 0.65);
+    const durationMs = Math.max(
+        TRACK_SMOOTHING.minDurationMs,
+        Math.min(TRACK_SMOOTHING.maxDurationMs, rawDuration)
+    );
+
+    if (ref.animFrame) {
+        cancelAnimationFrame(ref.animFrame);
+        ref.animFrame = null;
+    }
+
+    const startLat = current.lat;
+    const startLon = current.lng;
+    const start = performance.now();
+
+    const animate = (ts) => {
+        const progress = Math.min(1, (ts - start) / durationMs);
+        const eased = easeOutCubic(progress);
+        const lat = startLat + (nextLat - startLat) * eased;
+        const lon = startLon + (nextLon - startLon) * eased;
+        ref.marker.setLatLng([lat, lon]);
+
+        if (progress < 1) {
+            ref.animFrame = requestAnimationFrame(animate);
+        } else {
+            ref.animFrame = null;
+        }
+    };
+
+    ref.animFrame = requestAnimationFrame(animate);
 }
 
 // Build tooltip with spoofing badge + aircraft type
@@ -368,8 +438,8 @@ window.addOrUpdateLiveAsset = function (asset) {
     const existing = liveMarkerRefs[asset.id];
 
     if (existing) {
-        // Update position
-        existing.marker.setLatLng([asset.lat, asset.lon]);
+        // Smooth real-time position update
+        smoothMoveMarker(existing, asset.lat, asset.lon, asset);
 
         // OPTIMIZATION: Only update icon if heading changed (> 3°) — avoids SVG DOM churn
         const headingDelta = Math.abs(asset.heading - (existing.lastHeading || 0));
@@ -440,6 +510,7 @@ window.addOrUpdateLiveAsset = function (asset) {
             lastColor: asset.color,
             lastTrailLen: 0,
             source: asset._source,
+            animFrame: null,
             _pendingTooltip: null
         };
     }
@@ -451,6 +522,10 @@ window.removeLiveAsset = function (id) {
 
     const layer = ref.source === 'ais' ? liveAisLayer : liveAdsbLayer;
     if (layer) {
+        if (ref.animFrame) {
+            cancelAnimationFrame(ref.animFrame);
+            ref.animFrame = null;
+        }
         if (ref.marker) ref.marker.remove();
         ref.trailSegments.forEach(seg => {
             if (seg) seg.remove();
