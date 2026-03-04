@@ -243,6 +243,11 @@ body {
   animation: blink 1s infinite;
 }
 
+.wv-feed-dot.sat {
+  background: #b388ff;
+  box-shadow: 0 0 4px #b388ff;
+}
+
 .wv-feed-count {
   margin-left: auto;
   font-weight: 600;

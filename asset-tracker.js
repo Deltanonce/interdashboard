@@ -1,5 +1,5 @@
 // ============================================================================
-// asset-tracker.js — Real-Time Telemetry: ADS-B Mil + AIS Maritime
+// asset-tracker.js — Real-Time Telemetry: ADS-B Mil + AIS Maritime + SAT
 // Intel Dashboard V4.0 — Fase 3
 // ============================================================================
 
@@ -10,6 +10,8 @@ const AssetTracker = (() => {
     const ADSB_PROXY = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL.replace(/\/api$/, '') + '/api/adsb-mil' : '/api/adsb-mil'; // Proxied via proxy-server.ps1
     const ADSB_DIRECT = 'https://api.adsb.lol/v2/mil'; // Fallback direct
     const ADSB_POLL_INTERVAL = 15000; // 15 sec
+    const SAT_TLE_ENDPOINT = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL.replace(/\/api$/, '') + '/api/sat-tle' : '/api/sat-tle';
+    const SAT_POLL_INTERVAL = 60000; // 60 sec
     const AIS_WS_URL = 'wss://stream.aisstream.io/v0/stream';
     const MAX_TRAIL_POINTS = 200;
     const STALE_THRESHOLD = 300; // 5 min: remove asset if unseen for this long
@@ -33,6 +35,7 @@ const AssetTracker = (() => {
     const dirtyAssets = new Set(); // IDs that changed since last render
     const assetTimestampIndex = new Map(); // id → last-seen timestamp
     let adsbPollTimer = null;
+    let satPollTimer = null;
     let aisSocket = null;
     let aisReconnectDelay = 2000;
     let aisReconnectTimer = null;
@@ -40,7 +43,7 @@ const AssetTracker = (() => {
     let isRunning = false;
     let aisCountCache = 0;      // Incremental counter instead of O(n) filter
     let staleCleanupTimer = null;
-    let stats = { adsbCount: 0, aisCount: 0, lastAdsbPoll: null, aisConnected: false, spoofAlerts: 0 };
+    let stats = { adsbCount: 0, aisCount: 0, satCount: 0, lastAdsbPoll: null, aisConnected: false, spoofAlerts: 0 };
 
     // ── UTILITY: Haversine Distance (km) ───────────────────────────────
     function haversineKm(lat1, lon1, lat2, lon2) {
@@ -243,6 +246,167 @@ const AssetTracker = (() => {
         if (adsbPollTimer) {
             clearInterval(adsbPollTimer);
             adsbPollTimer = null;
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  SAT TRACKER (HTTP Polling — CelesTrak TLE via proxy)
+    // ══════════════════════════════════════════════════════════════════
+
+    function parseTleFeed(rawTle) {
+        if (!rawTle) return [];
+        const lines = rawTle.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        const sats = [];
+
+        for (let i = 0; i < lines.length - 2; i++) {
+            const name = lines[i];
+            const line1 = lines[i + 1];
+            const line2 = lines[i + 2];
+
+            if (!line1.startsWith('1 ') || !line2.startsWith('2 ')) continue;
+
+            sats.push({ name, line1, line2 });
+            i += 2;
+        }
+        return sats;
+    }
+
+    function propagateSatPosition(satrec, now) {
+        const pv = satellite.propagate(satrec, now);
+        if (!pv || !pv.position) return null;
+
+        const gmst = satellite.gstime(now);
+        const geodetic = satellite.eciToGeodetic(pv.position, gmst);
+        const lat = satellite.degreesLat(geodetic.latitude);
+        const lon = satellite.degreesLong(geodetic.longitude);
+        const altKm = geodetic.height;
+
+        const speedKmps = pv.velocity
+            ? Math.sqrt((pv.velocity.x ** 2) + (pv.velocity.y ** 2) + (pv.velocity.z ** 2))
+            : 0;
+
+        // Ground-track heading approximation: position now vs +60s
+        const futurePv = satellite.propagate(satrec, new Date(now.getTime() + 60000));
+        let heading = 0;
+        if (futurePv && futurePv.position) {
+            const futureGeo = satellite.eciToGeodetic(futurePv.position, satellite.gstime(new Date(now.getTime() + 60000)));
+            const dLon = satellite.degreesLong(futureGeo.longitude) - lon;
+            const y = Math.sin(dLon * Math.PI / 180) * Math.cos(satellite.degreesLat(futureGeo.latitude) * Math.PI / 180);
+            const x = Math.cos(lat * Math.PI / 180) * Math.sin(satellite.degreesLat(futureGeo.latitude) * Math.PI / 180)
+                - Math.sin(lat * Math.PI / 180) * Math.cos(satellite.degreesLat(futureGeo.latitude) * Math.PI / 180) * Math.cos(dLon * Math.PI / 180);
+            heading = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+        }
+
+        return {
+            lat,
+            lon,
+            altitudeFt: Math.round(altKm * 3280.84),
+            speedKts: Math.round(speedKmps * 1943.84),
+            heading: Math.round(heading)
+        };
+    }
+
+    async function pollSatellite() {
+        if (typeof satellite === 'undefined') {
+            console.warn('[SAT] satellite.js belum tersedia. Feed satelit dilewati.');
+            return;
+        }
+
+        try {
+            const res = await fetch(SAT_TLE_ENDPOINT);
+            if (!res.ok) throw new Error(`SAT HTTP ${res.status}`);
+
+            const tleRaw = await res.text();
+            const tleSets = parseTleFeed(tleRaw);
+            const nowDate = new Date();
+            const now = nowDate.getTime();
+            let count = 0;
+
+            tleSets.forEach((tle) => {
+                try {
+                    const satrec = satellite.twoline2satrec(tle.line1, tle.line2);
+                    const state = propagateSatPosition(satrec, nowDate);
+                    if (!state || !Number.isFinite(state.lat) || !Number.isFinite(state.lon)) return;
+
+                    const noradId = tle.line1.substring(2, 7).trim();
+                    const id = `sat-${noradId || count}`;
+                    const prevAsset = liveAssets[id] || null;
+
+                    if (prevAsset) {
+                        const oldLat = prevAsset.lat;
+                        const oldLon = prevAsset.lon;
+                        prevAsset.lat = state.lat;
+                        prevAsset.lon = state.lon;
+                        prevAsset.altitude = state.altitudeFt;
+                        prevAsset.speed = state.speedKts;
+                        prevAsset.heading = state.heading;
+                        prevAsset.callsign = tle.name || prevAsset.callsign;
+                        prevAsset._seenSec = 0;
+                        prevAsset._timestamp = now;
+                        prevAsset.source = 'tle';
+                        prevAsset.confidence = 75;
+                        prevAsset.cat = 'space';
+                        prevAsset.color = '#b388ff';
+                        updateTrail(prevAsset, state.lat, state.lon, state.altitudeFt);
+                        assetTimestampIndex.delete(id);
+                        assetTimestampIndex.set(id, now);
+                        if (Math.abs(state.lat - oldLat) > 0.0001 || Math.abs(state.lon - oldLon) > 0.0001) dirtyAssets.add(id);
+                    } else {
+                        liveAssets[id] = {
+                            id,
+                            type: 'satellite',
+                            callsign: (tle.name || `NORAD-${noradId}`).trim().toUpperCase(),
+                            lat: state.lat,
+                            lon: state.lon,
+                            altitude: state.altitudeFt,
+                            speed: state.speedKts,
+                            heading: state.heading,
+                            source: 'tle',
+                            _seenSec: 0,
+                            _timestamp: now,
+                            moving: true,
+                            cat: 'space',
+                            color: '#b388ff',
+                            trail: [],
+                            trailAlt: [],
+                            confidence: 75,
+                            spoofing: false,
+                            _live: true,
+                            _source: 'sat'
+                        };
+                        updateTrail(liveAssets[id], state.lat, state.lon, state.altitudeFt);
+                        assetTimestampIndex.delete(id);
+                        assetTimestampIndex.set(id, now);
+                        dirtyAssets.add(id);
+                    }
+                    count++;
+                } catch (e) {
+                    // Skip malformed TLE rows
+                }
+            });
+
+            stats.satCount = count;
+            flushDirtyToMap();
+            cleanStaleAssets();
+            updateLiveCountBadge();
+            console.log(`[SAT] 🛰 ${count} satellites updated (${new Date().toLocaleTimeString()})`);
+        } catch (err) {
+            console.error('[SAT] Error polling:', err.message);
+        }
+    }
+
+    function startSatellitePolling() {
+        if (satPollTimer) return;
+        pollSatellite();
+        satPollTimer = setInterval(() => {
+            if (isRunning) pollSatellite();
+        }, SAT_POLL_INTERVAL);
+    }
+
+    function stopSatellitePolling() {
+        if (satPollTimer) {
+            clearInterval(satPollTimer);
+            satPollTimer = null;
         }
     }
 
@@ -566,6 +730,7 @@ const AssetTracker = (() => {
             delete liveAssets[id];
             assetTimestampIndex.delete(id);
             if (id.startsWith('ais-')) aisCountCache = Math.max(0, aisCountCache - 1);
+            if (id.startsWith('sat-')) stats.satCount = Math.max(0, stats.satCount - 1);
             if (typeof window.removeLiveAsset === 'function') window.removeLiveAsset(id);
         });
 
@@ -576,14 +741,18 @@ const AssetTracker = (() => {
         // HUD (Left Panel)
         const adsbBadge = document.getElementById('live-adsb-count');
         const aisBadge = document.getElementById('live-ais-count');
+        const satBadge = document.getElementById('live-sat-count');
         if (adsbBadge) adsbBadge.textContent = stats.adsbCount;
         if (aisBadge) aisBadge.textContent = stats.aisCount;
+        if (satBadge) satBadge.textContent = stats.satCount;
 
         // BOTTOM TOOLBAR
         const adsbToolbar = document.getElementById('toolbar-adsb-count');
         const aisToolbar = document.getElementById('toolbar-ais-count');
+        const satToolbar = document.getElementById('toolbar-sat-count');
         if (adsbToolbar) adsbToolbar.textContent = stats.adsbCount;
         if (aisToolbar) aisToolbar.textContent = stats.aisCount;
+        if (satToolbar) satToolbar.textContent = stats.satCount;
 
         // AIS connection indicator (Update both)
         ['ais-status-dot', 'toolbar-ais-dot'].forEach(id => {
@@ -601,6 +770,7 @@ const AssetTracker = (() => {
         isRunning = true;
         console.log('[AssetTracker] ████ INITIALIZING REAL-TIME TELEMETRY ████');
         startAdsbPolling();
+        startSatellitePolling();
         connectAis();
 
         // Periodic stale cleanup every 60s
@@ -611,6 +781,7 @@ const AssetTracker = (() => {
     function stop() {
         isRunning = false;
         stopAdsbPolling();
+        stopSatellitePolling();
         disconnectAis();
         if (staleCleanupTimer) {
             clearInterval(staleCleanupTimer);

@@ -9,7 +9,7 @@
     content="Sistem analitik intelijen real-time: I&W Matrix, ACH, Red Teaming, Net Assessment, Cone of Plausibility, SIGINT Fusion — Konflik Iran-Israel-AS" />
   <meta name="theme-color" content="#06101a" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://server.arcgisonline.com; connect-src 'self' https://api.adsb.lol wss://stream.aisstream.io http://localhost:8888; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none';" />
+    content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://server.arcgisonline.com; connect-src 'self' https://api.adsb.lol wss://stream.aisstream.io http://localhost:8888 https://celestrak.org; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none';" />
   <link rel="icon" href="data:," />
 
   <!-- Fonts -->
@@ -136,6 +136,11 @@
         <span>AIS VESSEL</span>
         <span class="wv-feed-count" id="live-ais-count">0</span>
       </div>
+      <div class="wv-feed-row">
+        <span class="wv-feed-dot sat"></span>
+        <span>SAT TRACK</span>
+        <span class="wv-feed-count" id="live-sat-count">0</span>
+      </div>
     </div>
   </aside>
 
@@ -194,6 +199,10 @@
       <button class="wv-pill active" data-color="green" data-live-layer="ais">
         <span class="wv-pill-dot connected" id="toolbar-ais-dot"></span>
         SEA (AIS) <span class="wv-pill-val" id="toolbar-ais-count">0</span>
+      </button>
+      <button class="wv-pill active" data-color="purple" data-live-layer="sat">
+        <span class="wv-pill-dot"></span>
+        SAT (TLE) <span class="wv-pill-val" id="toolbar-sat-count">0</span>
       </button>
       <button class="wv-pill active" data-color="blue" data-layer="naval">
         NAVAL
@@ -478,6 +487,7 @@
 
   <!-- Scripts — NO defer: execution order matters (app-logic.js depends on app.js) -->
   <script src="config.js?v=51"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/5.0.0/satellite.min.js"></script>
   <script src="map.js?v=51"></script>
   <script src="asset-tracker.js?v=51"></script>
   <script src="app.js?v=51"></script>

@@ -32,6 +32,14 @@ const ASSET_SVG = {
             <path d="M20 2 L23 12 L23 28 L27 34 L20 30 L13 34 L17 28 L17 12 Z"/>
             <circle cx="20" cy="16" r="2" fill="#000" opacity="0.5"/>
         </g>
+    </svg>`,
+    satellite: (color) => `<svg viewBox="0 0 40 40" width="28" height="28" xmlns="http://www.w3.org/2000/svg">
+        <g fill="none" stroke="${color}" stroke-width="1.8" opacity="0.95">
+            <rect x="4" y="14" width="9" height="12" rx="1.2"/>
+            <rect x="27" y="14" width="9" height="12" rx="1.2"/>
+            <rect x="15" y="16" width="10" height="8" rx="1.2" fill="${color}" opacity="0.5"/>
+            <circle cx="20" cy="20" r="2" fill="${color}"/>
+        </g>
     </svg>`
 };
 
@@ -117,12 +125,15 @@ function initMap() {
     setInterval(() => {
         const adsbVal = document.getElementById('live-adsb-count');
         const aisVal = document.getElementById('live-ais-count');
+        const satVal = document.getElementById('live-sat-count');
         const toolbarAdsb = document.getElementById('toolbar-adsb-count');
         const toolbarAis = document.getElementById('toolbar-ais-count');
+        const toolbarSat = document.getElementById('toolbar-sat-count');
         const toolbarAisDot = document.getElementById('toolbar-ais-dot');
         const aisStatusDot = document.getElementById('ais-status-dot');
         if (adsbVal && toolbarAdsb) toolbarAdsb.textContent = adsbVal.textContent;
         if (aisVal && toolbarAis) toolbarAis.textContent = aisVal.textContent;
+        if (satVal && toolbarSat) toolbarSat.textContent = satVal.textContent;
         if (aisStatusDot && toolbarAisDot) {
             toolbarAisDot.className = aisStatusDot.className;
         }
@@ -200,6 +211,16 @@ function createAssetIcon(asset) {
             </div>`,
             iconSize: [200, 80],
             iconAnchor: [100, 40] // Center of 200x80 container
+        });
+    }
+
+    if (asset.type === 'satellite') {
+        const svgHtmlSat = ASSET_SVG.satellite(asset.color || '#b388ff');
+        return L.divIcon({
+            className: 'mil-asset-icon',
+            html: `<div class="mil-asset-svg" style="transform:rotate(${rotation}deg)">${svgHtmlSat}</div>`,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
         });
     }
 
@@ -327,6 +348,7 @@ window.toggleLayer = function (cat, el) {
 
 let liveAdsbLayer = null;
 let liveAisLayer = null;
+let liveSatLayer = null;
 let liveMarkerRefs = {}; // id → { marker, glow, trailSegments[], lastHeading, lastTrailLen, source }
 
 function ensureLiveLayers() {
@@ -337,6 +359,9 @@ function ensureLiveLayers() {
     if (!liveAisLayer) {
         liveAisLayer = L.featureGroup().addTo(leafletMap);
     }
+    if (!liveSatLayer) {
+        liveSatLayer = L.featureGroup().addTo(leafletMap);
+    }
 }
 
 // Build tooltip with spoofing badge + aircraft type
@@ -344,7 +369,7 @@ function buildLiveTooltip(asset) {
     const confColor = asset.confidence >= 90 ? '#2ed573' : asset.confidence >= 70 ? '#ffa502' : '#ff4757';
     const altDisplay = asset.altitude < 0 ? `${asset.altitude}ft (SUB)` : asset.altitude === 0 ? 'SFC' : `FL${Math.round(asset.altitude / 100)}`;
     const spoofBadge = asset.spoofing ? '<div class="spoofing-badge">⚠ SPOOFING</div>' : '';
-    const srcBadge = asset._source === 'adsb' ? '📡 ADS-B' : '🚢 AIS';
+    const srcBadge = asset._source === 'adsb' ? '📡 ADS-B' : asset._source === 'ais' ? '🚢 AIS' : '🛰 SAT';
     const acType = asset.aircraftType ? ` [${asset.aircraftType}]` : '';
     return `<div class="asset-hud-tooltip">
         ${spoofBadge}
@@ -364,7 +389,7 @@ window.addOrUpdateLiveAsset = function (asset) {
     if (!leafletMap) return;
     ensureLiveLayers();
 
-    const targetLayer = asset._source === 'ais' ? liveAisLayer : liveAdsbLayer;
+    const targetLayer = asset._source === 'ais' ? liveAisLayer : asset._source === 'sat' ? liveSatLayer : liveAdsbLayer;
     const existing = liveMarkerRefs[asset.id];
 
     if (existing) {
@@ -449,7 +474,7 @@ window.removeLiveAsset = function (id) {
     const ref = liveMarkerRefs[id];
     if (!ref) return;
 
-    const layer = ref.source === 'ais' ? liveAisLayer : liveAdsbLayer;
+    const layer = ref.source === 'ais' ? liveAisLayer : ref.source === 'sat' ? liveSatLayer : liveAdsbLayer;
     if (layer) {
         if (ref.marker) ref.marker.remove();
         ref.trailSegments.forEach(seg => {
@@ -464,7 +489,7 @@ window.toggleLiveLayer = function (source, el) {
     if (!leafletMap) return;
     ensureLiveLayers();
     const isActive = el.classList.contains('active');
-    const layer = source === 'adsb' ? liveAdsbLayer : liveAisLayer;
+    const layer = source === 'adsb' ? liveAdsbLayer : source === 'ais' ? liveAisLayer : liveSatLayer;
 
     if (isActive) {
         el.classList.remove('active');
