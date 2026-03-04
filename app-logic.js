@@ -899,11 +899,32 @@ function buildAnalystSummary() {
 
     const triggered = IW_INDICATORS.filter(i => i.status === 'triggered');
     const watched = IW_INDICATORS.filter(i => i.status === 'watch');
+    const clear = IW_INDICATORS.filter(i => i.status === 'clear');
+    const totalIw = IW_INDICATORS.length || 1;
+
+    const categorySpread = new Set(triggered.map(i => i.cat)).size;
+    const iwPressureScore = Math.round(
+        (triggered.length / totalIw) * 70 +
+        (watched.length / totalIw) * 20 +
+        (categorySpread / 4) * 10
+    );
 
     const topMover = scenarios.map(s => ({ ...s, absDelta: Math.abs(s.current - s.baseline) }))
         .sort((a, b) => b.absDelta - a.absDelta)[0];
     const topMilitary = scenarios.filter(s => s.group === 'militer').sort((a, b) => b.current - a.current)[0];
     const topDiplomasi = scenarios.filter(s => s.group === 'diplomasi').sort((a, b) => b.current - a.current)[0];
+
+    const confidenceWeight = { high: 1, med: 0.8, low: 0.6, spec: 0.4 };
+    const weightedDelta = scenarios.reduce((sum, s) => {
+        const w = confidenceWeight[s.confBase] || 0.7;
+        return sum + Math.abs(s.current - s.baseline) * w;
+    }, 0);
+    const weightedVolatility = Math.round(weightedDelta / Math.max(1, scenarios.length));
+
+    const fusionScore = computeFusionScore();
+    const predictions = computePredictiveAnalytics();
+    const kineticPrediction = predictions.find(p => p.label.toLowerCase().includes('eskalasi militer kinetik'));
+    const riskBias = kineticPrediction ? kineticPrediction.pct - (kineticPrediction.lo + kineticPrediction.hi) / 2 : 0;
 
     let achWinner = null;
     if (typeof ACH_HYPOTHESES !== 'undefined' && typeof ACH_EVIDENCE !== 'undefined') {
@@ -919,20 +940,20 @@ function buildAnalystSummary() {
     const parts = [];
 
     if (currentThreatLevel >= 4) {
-        parts.push(`KRITIS — ${triggered.length} indikator I&W aktif (TRIGGERED) dengan ${watched.length} dalam status WATCH. Sistem berada di ambang batas eskalasi penuh.`);
+        parts.push(`KRITIS — ${triggered.length}/${totalIw} indikator I&W aktif (TRIGGERED), ${watched.length} WATCH, pressure score ${iwPressureScore}/100. Sistem berada di ambang batas eskalasi penuh.`);
     } else if (currentThreatLevel === 3) {
-        parts.push(`Level ancaman TINGGI — ${triggered.length} I&W triggered, ${watched.length} WATCH. Postur kinetik sedang meningkat secara terukur.`);
+        parts.push(`Level ancaman TINGGI — ${triggered.length}/${totalIw} I&W triggered, ${watched.length} WATCH, pressure score ${iwPressureScore}/100. Postur kinetik meningkat secara terukur.`);
     } else if (currentThreatLevel === 2) {
-        parts.push(`Level ancaman WASPADA — ${triggered.length} indikator dipicu, ${watched.length} dalam pemantauan aktif. Deterrence masih berfungsi namun rentan.`);
+        parts.push(`Level ancaman WASPADA — ${triggered.length}/${totalIw} indikator dipicu, ${watched.length} dipantau, ${clear.length} clear. Deterrence masih berfungsi namun rentan.`);
     } else {
-        parts.push(`Level ancaman ${threatLabel} — ${triggered.length} I&W triggered. Situasi terkendali dalam parameter pemantauan rutin.`);
+        parts.push(`Level ancaman ${threatLabel} — ${triggered.length}/${totalIw} I&W triggered dan ${clear.length} clear. Situasi relatif terkendali dalam parameter pemantauan rutin.`);
     }
 
     if (topMover && topMover.absDelta >= 3) {
         const dir = topMover.current > topMover.baseline ? 'naik' : 'turun';
         const delta = topMover.current - topMover.baseline;
         const sign = delta > 0 ? '+' : '';
-        parts.push(`Delta terbesar: skenario "${topMover.name}" ${dir} ${sign}${delta}% dari baseline — menjadi focal point perhatian analis sesi ini.`);
+        parts.push(`Delta terbesar: skenario "${topMover.name}" ${dir} ${sign}${delta}% dari baseline. Volatilitas berbobot lintas skenario saat ini ${weightedVolatility} poin.`);
     }
 
     if (topMilitary && topDiplomasi) {
@@ -949,6 +970,17 @@ function buildAnalystSummary() {
     if (achWinner) {
         parts.push(`ACH saat ini menunjuk hipotesis paling konsisten: ${achWinner.name} (${achWinner.incons} inkonsistensi berbobot). Prioritaskan collection requirement pada indikator diagnostik untuk konfirmasi.`);
     }
+
+    if (kineticPrediction) {
+        const biasText = Math.abs(riskBias) < 1
+            ? 'terkalibrasi dekat midpoint interval'
+            : riskBias > 0
+                ? 'cenderung lebih agresif dari midpoint interval'
+                : 'cenderung lebih konservatif dari midpoint interval';
+        parts.push(`Prediksi 72 jam: eskalasi militer kinetik ${kineticPrediction.pct}% (CI ${kineticPrediction.lo}-${kineticPrediction.hi}) dengan confidence ${kineticPrediction.conf}. Model saat ini ${biasText}.`);
+    }
+
+    parts.push(`Kualitas fusi data multi-sumber berada pada skor ${fusionScore}/100, sehingga rekomendasi ini memadukan sinyal I&W, dinamika skenario, dan konsistensi ACH secara simultan.`);
 
     return parts.join(' ');
 }
