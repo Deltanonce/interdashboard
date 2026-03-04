@@ -329,6 +329,29 @@ let liveAdsbLayer = null;
 let liveAisLayer = null;
 let liveMarkerRefs = {}; // id → { marker, glow, trailSegments[], lastHeading, lastTrailLen, source }
 
+function animateMarkerTo(marker, targetLatLng, durationMs = 900) {
+    const startLatLng = marker.getLatLng();
+    const startTime = performance.now();
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+    if (marker.__animFrame) cancelAnimationFrame(marker.__animFrame);
+
+    function step(now) {
+        const t = Math.min(1, (now - startTime) / durationMs);
+        const eased = easeOutCubic(t);
+        const lat = startLatLng.lat + (targetLatLng[0] - startLatLng.lat) * eased;
+        const lon = startLatLng.lng + (targetLatLng[1] - startLatLng.lng) * eased;
+        marker.setLatLng([lat, lon]);
+        if (t < 1) {
+            marker.__animFrame = requestAnimationFrame(step);
+        } else {
+            marker.__animFrame = null;
+        }
+    }
+
+    marker.__animFrame = requestAnimationFrame(step);
+}
+
 function ensureLiveLayers() {
     if (!leafletMap) return;
     if (!liveAdsbLayer) {
@@ -368,8 +391,8 @@ window.addOrUpdateLiveAsset = function (asset) {
     const existing = liveMarkerRefs[asset.id];
 
     if (existing) {
-        // Update position
-        existing.marker.setLatLng([asset.lat, asset.lon]);
+        // Smooth position interpolation for real-time feel
+        animateMarkerTo(existing.marker, [asset.lat, asset.lon], asset._source === 'ais' ? 1500 : 900);
 
         // OPTIMIZATION: Only update icon if heading changed (> 3°) — avoids SVG DOM churn
         const headingDelta = Math.abs(asset.heading - (existing.lastHeading || 0));

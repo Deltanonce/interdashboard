@@ -138,7 +138,7 @@ const AssetTracker = (() => {
                 if (!res.ok) throw new Error(`ADS-B HTTP ${res.status}`);
             }
             const data = await res.json();
-            const aircraft = data.ac || [];
+            const aircraft = data.ac || data.aircraft || data.states || [];
 
             stats.lastAdsbPoll = new Date();
             let count = 0;
@@ -349,6 +349,7 @@ const AssetTracker = (() => {
 
     // ── AIS HTTP Polling (uses server-side relay) ──
     let aisPollCount = 0;
+    let aisConfigWarningShown = false;
     async function pollAisHttp() {
         aisPollCount++;
         try {
@@ -364,6 +365,14 @@ const AssetTracker = (() => {
             if (data.connected) {
                 stats.aisConnected = true;
                 updateAisStatusDot(true);
+            } else {
+                stats.aisConnected = false;
+                updateAisStatusDot(false);
+            }
+
+            if (data.configured === false && !aisConfigWarningShown) {
+                aisConfigWarningShown = true;
+                console.warn('[AIS] Relay is running but API key is not configured on server. Set AISSTREAM_API_KEY to enable ship tracking.');
             }
 
             if (data.messages && data.messages.length > 0) {
@@ -388,7 +397,7 @@ const AssetTracker = (() => {
         aisPollTimer = setInterval(() => {
             if (isRunning) pollAisHttp();
         }, AIS_POLL_INTERVAL);
-        console.log('[AIS] HTTP polling started (every 10s via /api/ais-poll)');
+        console.log('[AIS] HTTP polling started (every 5s via /api/ais-poll)');
     }
 
     function updateAisStatusDot(connected) {
