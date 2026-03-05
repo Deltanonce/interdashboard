@@ -49,6 +49,9 @@ let masterClockTimer = null;
 let liveNewsTimer = null;
 let newsInjectTimer = null;
 let bootFailsafeTimer = null;
+let telemetryTimer = null;
+const telemetryState = { recvKbps: 520, sendKbps: 360 };
+let telemetryProvider = null;
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
@@ -123,6 +126,7 @@ async function runBootSequence() {
         updateClock();
         if (masterClockTimer) clearInterval(masterClockTimer);
         masterClockTimer = setInterval(updateClock, 1000);
+        startTelemetryUpdater();
     } catch (e) { }
 
     try { initMap(); } catch (e) { }
@@ -208,8 +212,53 @@ function updateClock() {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
     const clockEl = document.getElementById('clock-display');
     const dateEl = document.getElementById('date-display');
+    const utcEl = document.getElementById('utc-display');
     if (clockEl) clockEl.textContent = `${p(wib.getHours())}:${p(wib.getMinutes())}:${p(wib.getSeconds())} WIB`;
     if (dateEl) dateEl.textContent = `${p(wib.getDate())} ${months[wib.getMonth()]} ${wib.getFullYear()}`;
+    if (utcEl) utcEl.textContent = formatUtcTimestamp(now);
+}
+
+function formatUtcTimestamp(date) {
+    const p = n => String(n).padStart(2, '0');
+    return `${date.getUTCFullYear()}-${p(date.getUTCMonth() + 1)}-${p(date.getUTCDate())} ${p(date.getUTCHours())}:${p(date.getUTCMinutes())}:${p(date.getUTCSeconds())}Z`;
+}
+
+function setTelemetryProvider(provider) {
+    telemetryProvider = (typeof provider === 'function') ? provider : null;
+}
+
+function startTelemetryUpdater(intervalMs = 2000) {
+    if (telemetryTimer) clearInterval(telemetryTimer);
+    updateTelemetry();
+    telemetryTimer = setInterval(updateTelemetry, intervalMs);
+}
+
+function updateTelemetry() {
+    const sample = (typeof telemetryProvider === 'function')
+        ? telemetryProvider()
+        : generateTelemetrySample();
+    renderTelemetry(sample || {});
+}
+
+function generateTelemetrySample() {
+    const recvDelta = (Math.random() - 0.5) * 120;
+    const sendDelta = (Math.random() - 0.5) * 90;
+    telemetryState.recvKbps = Math.max(120, Math.min(1500, telemetryState.recvKbps + recvDelta));
+    telemetryState.sendKbps = Math.max(90, Math.min(1100, telemetryState.sendKbps + sendDelta));
+    return {
+        recvKbps: telemetryState.recvKbps,
+        sendKbps: telemetryState.sendKbps
+    };
+}
+
+function renderTelemetry(sample) {
+    const recvEl = document.getElementById('telemetry-recv');
+    const sendEl = document.getElementById('telemetry-send');
+    const recvKbps = Number(sample.recvKbps);
+    const sendKbps = Number(sample.sendKbps);
+
+    if (recvEl && Number.isFinite(recvKbps)) recvEl.textContent = `${recvKbps.toFixed(0)} kbps`;
+    if (sendEl && Number.isFinite(sendKbps)) sendEl.textContent = `${sendKbps.toFixed(0)} kbps`;
 }
 
 // ===== COUNTDOWN =====
