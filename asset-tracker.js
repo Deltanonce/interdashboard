@@ -367,9 +367,9 @@ const AssetTracker = (() => {
             }
 
             if (data.messages && data.messages.length > 0) {
-                data.messages.forEach(msgStr => {
+                data.messages.forEach((msgEntry) => {
                     try {
-                        const msg = JSON.parse(msgStr);
+                        const msg = (typeof msgEntry === 'string') ? JSON.parse(msgEntry) : msgEntry;
                         processAisMessage(msg);
                     } catch (e) { /* skip */ }
                 });
