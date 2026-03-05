@@ -36,7 +36,7 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 
-<body>
+<body class="crt-mode">
 
   <!-- BOOT SEQUENCE OVERLAY -->
   <div class="boot-sequence" id="boot-sequence">
@@ -52,6 +52,20 @@
 
   <!-- ===== FULL-SCREEN MAP (BACKGROUND) ===== -->
   <div id="satellite-map"></div>
+
+  <div class="wv-crt-overlay" aria-hidden="true"></div>
+
+  <section class="wv-orbital-stage" aria-hidden="true">
+    <div class="wv-orbital-ring">
+      <div class="wv-orbital-glow"></div>
+      <div class="wv-orbital-grid"></div>
+      <div class="wv-orbital-vector vector-a"></div>
+      <div class="wv-orbital-vector vector-b"></div>
+      <div class="wv-hotspot hotspot-1"></div>
+      <div class="wv-hotspot hotspot-2"></div>
+      <div class="wv-hotspot hotspot-3"></div>
+    </div>
+  </section>
 
   <!-- ===== TOP BAR (Floating) ===== -->
   <header class="wv-top-bar">
@@ -213,6 +227,18 @@
       ▶ ANALYSIS PANEL
     </button>
   </nav>
+
+  <footer class="wv-timeline-bar">
+    <div class="wv-timeline-track">
+      <span class="cluster red"></span>
+      <span class="cluster cyan"></span>
+      <span class="cluster amber"></span>
+      <span class="playhead"></span>
+    </div>
+    <div class="wv-timeline-scale">
+      <span>00:00:00</span><span>00:15:00</span><span>00:30:00</span><span>00:45:00</span><span>01:00:00</span>
+    </div>
+  </footer>
 
   <!-- ===== COORDINATE STATUS BAR (Bottom-Left) ===== -->
   <div class="wv-coord-bar">
