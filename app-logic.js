@@ -7,6 +7,9 @@ let _sparkCache = new Map(), _sparkCacheLen = 0;
 let radarChart = null, currentPerspective = 'iran';
 let activeFeedFilter = 'all', credFilterOn = false, uvVisible = false;
 let lastRedPhoneTime = 0;
+let timelineTimer = null;
+const timelineState = { playing: false, speed: 1, position: 1 };
+
 
 // Panel collapse state
 const PANEL_STATES = {
@@ -736,6 +739,108 @@ function computeDST(scenario) {
     return { belief, plausibility, uncertainty };
 }
 
+// ===== TIMELINE =====
+function getTimelineCutoffMinutes() {
+    if (typeof VERIFIED_NEWS === 'undefined' || !Array.isArray(VERIFIED_NEWS) || VERIFIED_NEWS.length === 0) return Infinity;
+    const maxMinute = Math.max(...VERIFIED_NEWS.map(n => Number(n.time) || 0));
+    return Math.round((1 - timelineState.position) * maxMinute);
+}
+
+function getTimelineScenarioView() {
+    const baseView = scenarios.map(s => ({ ...s }));
+    if (typeof SNAPSHOT_HISTORY === 'undefined' || !Array.isArray(SNAPSHOT_HISTORY) || SNAPSHOT_HISTORY.length === 0) return baseView;
+    const idx = Math.round(timelineState.position * (SNAPSHOT_HISTORY.length - 1));
+    const snap = SNAPSHOT_HISTORY[idx];
+    if (!snap || !snap.probabilities) return baseView;
+    return baseView.map(s => ({ ...s, current: snap.probabilities[s.id] ?? s.current }));
+}
+
+function updateTimelineCurrentTime() {
+    const currentEl = document.getElementById('timeline-current-time');
+    if (!currentEl) return;
+    const cutoff = getTimelineCutoffMinutes();
+    const hh = String(Math.floor(cutoff / 60)).padStart(2, '0');
+    const mm = String(cutoff % 60).padStart(2, '0');
+    currentEl.textContent = `T+${hh}:${mm}`;
+}
+
+function renderTimelineTrack() {
+    const ticksEl = document.getElementById('timeline-ticks');
+    const eventsEl = document.getElementById('timeline-events');
+    if (!ticksEl || !eventsEl) return;
+
+    ticksEl.innerHTML = Array.from({ length: 9 }, () => '<span class="timeline-tick"></span>').join('');
+    const chronologyLen = (typeof ESCALATION_CHRONOLOGY !== 'undefined' && Array.isArray(ESCALATION_CHRONOLOGY)) ? ESCALATION_CHRONOLOGY.length : 0;
+    const clusters = Math.min(6, Math.max(3, chronologyLen || 3));
+    eventsEl.innerHTML = Array.from({ length: clusters }, (_, idx) => {
+        const pos = (idx / Math.max(1, clusters - 1)) * 100;
+        return `<span class="timeline-event-cluster" style="left:calc(${pos}% - 5px)"></span>`;
+    }).join('');
+}
+
+function setTimelinePosition(nextPos) {
+    timelineState.position = Math.max(0, Math.min(1, nextPos));
+    const playheadEl = document.getElementById('timeline-playhead');
+    if (playheadEl) playheadEl.style.left = `${timelineState.position * 100}%`;
+    updateTimelineCurrentTime();
+    renderAll();
+}
+
+function toggleTimelinePlayback(forceState) {
+    const btn = document.getElementById('timeline-play-toggle');
+    timelineState.playing = typeof forceState === 'boolean' ? forceState : !timelineState.playing;
+    if (btn) btn.textContent = timelineState.playing ? '❚❚ PAUSE' : '▶ PLAY';
+
+    if (timelineTimer) clearInterval(timelineTimer);
+    if (timelineState.playing) {
+        timelineTimer = setInterval(() => {
+            const step = 0.0035 * timelineState.speed;
+            const next = timelineState.position + step;
+            if (next >= 1) {
+                setTimelinePosition(1);
+                toggleTimelinePlayback(false);
+                return;
+            }
+            setTimelinePosition(next);
+        }, 70);
+    }
+}
+
+function initTimelineEvents() {
+    renderTimelineTrack();
+    setTimelinePosition(1);
+
+    const playBtn = document.getElementById('timeline-play-toggle');
+    if (playBtn) playBtn.addEventListener('click', () => toggleTimelinePlayback());
+
+    const speedSel = document.getElementById('timeline-speed');
+    if (speedSel) speedSel.addEventListener('change', (e) => {
+        const nextSpeed = parseFloat(e.target.value || '1');
+        timelineState.speed = Number.isFinite(nextSpeed) ? nextSpeed : 1;
+    });
+
+    const trackWrap = document.getElementById('timeline-track-wrap');
+    if (trackWrap) {
+        const applyScrub = (evt) => {
+            const rect = trackWrap.getBoundingClientRect();
+            if (!rect.width) return;
+            const ratio = (evt.clientX - rect.left) / rect.width;
+            setTimelinePosition(ratio);
+        };
+
+        trackWrap.addEventListener('click', applyScrub);
+
+        let dragging = false;
+        trackWrap.addEventListener('pointerdown', (e) => {
+            dragging = true;
+            toggleTimelinePlayback(false);
+            applyScrub(e);
+        });
+        document.addEventListener('pointermove', (e) => { if (dragging) applyScrub(e); });
+        document.addEventListener('pointerup', () => { dragging = false; });
+    }
+}
+
 // ===== SCENARIOS =====
 const GRP = { diplomasi: 'group-diplomasi', militer: 'group-militer', ekonomi: 'group-ekonomi', ekstrem: 'group-ekstrem' };
 
@@ -745,9 +850,10 @@ function renderScenarios() {
     const topScenariosEl = document.getElementById('top-scenarios-list');
     if (topScenariosEl) topScenariosEl.innerHTML = '';
 
-    const top3Ids = [...scenarios].sort((a, b) => b.current - a.current).slice(0, 3).map(s => s.id);
+    const timelineScenarios = getTimelineScenarioView();
+    const top3Ids = [...timelineScenarios].sort((a, b) => b.current - a.current).slice(0, 3).map(s => s.id);
 
-    scenarios.forEach(s => {
+    timelineScenarios.forEach(s => {
         const el = document.getElementById(GRP[s.group]);
         const delta = s.current - s.baseline;
         const ds = delta === 0 ? '±0%' : delta > 0 ? `+${delta}%` : `${delta}%`;
@@ -791,7 +897,7 @@ function renderScenarios() {
 function renderDeltaTracker() {
     const el = document.getElementById('delta-list');
     if (!el || !Array.isArray(scenarios)) return;
-    const top = scenarios.map(s => ({ ...s, delta: s.current - s.baseline, abs: Math.abs(s.current - s.baseline) }))
+    const top = getTimelineScenarioView().map(s => ({ ...s, delta: s.current - s.baseline, abs: Math.abs(s.current - s.baseline) }))
         .filter(s => s.abs > 0).sort((a, b) => b.abs - a.abs).slice(0, 6);
     el.innerHTML = top.length ? top.map(s => `<div class="delta-item">
         <span class="delta-arrow ${s.delta > 0 ? 'up' : 'down'}">${s.delta > 0 ? '▲' : '▼'}</span>
@@ -836,7 +942,9 @@ function toggleUnverified() {
 function renderNews() {
     if (typeof VERIFIED_NEWS === 'undefined' || !Array.isArray(VERIFIED_NEWS)) return;
     const sorted = [...VERIFIED_NEWS].sort((a, b) => a.time - b.time);
-    const filtered = activeFeedFilter === 'all' ? sorted : sorted.filter(n => n.impact === activeFeedFilter);
+    const timelineCutoff = getTimelineCutoffMinutes();
+    const timelineFiltered = sorted.filter(n => (Number(n.time) || 0) >= timelineCutoff);
+    const filtered = activeFeedFilter === 'all' ? timelineFiltered : timelineFiltered.filter(n => n.impact === activeFeedFilter);
 
     const cb = document.getElementById('feed-count');
     if (cb) cb.textContent = filtered.length;
@@ -1338,7 +1446,10 @@ function renderChronology() {
     const container = document.getElementById('chronology-container');
     if (!container) return;
 
-    container.innerHTML = ESCALATION_CHRONOLOGY.map(item => `
+    const timelineCount = Math.max(1, Math.round(ESCALATION_CHRONOLOGY.length * timelineState.position));
+    const scopedChronology = ESCALATION_CHRONOLOGY.slice(0, timelineCount);
+
+    container.innerHTML = scopedChronology.map(item => `
         <div class="chron-item">
             <div class="chron-line"></div>
             <div class="chron-dot">◉</div>
@@ -1612,5 +1723,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initAnalysisPanelEvents();
     initRedPhoneEvents();
     initDynamicEventDelegation();
+    initTimelineEvents();
     console.log('[INIT] UI Event Binding Complete.');
 });
