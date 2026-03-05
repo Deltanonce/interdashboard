@@ -133,6 +133,28 @@ body {
   animation: blink 1.5s ease-in-out infinite;
 }
 
+.wv-telemetry-label {
+  font-weight: 700;
+  letter-spacing: 1.3px;
+}
+
+.wv-telemetry-label.tl-utc {
+  color: var(--accent-cyan);
+}
+
+.wv-telemetry-label.tl-recv {
+  color: var(--accent-amber);
+}
+
+.wv-telemetry-label.tl-send {
+  color: var(--accent-red);
+}
+
+.wv-telemetry-divider {
+  color: var(--accent-red);
+  opacity: 0.65;
+}
+
 /* ── FLOATING HUD PANELS ── */
 .wv-hud-left,
 .wv-hud-right {
