@@ -329,6 +329,41 @@ let liveAdsbLayer = null;
 let liveAisLayer = null;
 let liveMarkerRefs = {}; // id → { marker, glow, trailSegments[], lastHeading, lastTrailLen, source }
 
+function animateMarkerMotion(ref, toLatLng) {
+    if (!ref || !ref.marker) return;
+
+    const from = ref.marker.getLatLng();
+    const to = L.latLng(toLatLng[0], toLatLng[1]);
+    const duration = 900;
+    const startTs = performance.now();
+
+    if (ref.motionRaf) {
+        cancelAnimationFrame(ref.motionRaf);
+        ref.motionRaf = null;
+    }
+
+    if (!from || (Math.abs(from.lat - to.lat) < 0.00001 && Math.abs(from.lng - to.lng) < 0.00001)) {
+        ref.marker.setLatLng(to);
+        return;
+    }
+
+    const tick = (ts) => {
+        const p = Math.min(1, (ts - startTs) / duration);
+        const ease = 1 - Math.pow(1 - p, 3);
+        const lat = from.lat + (to.lat - from.lat) * ease;
+        const lng = from.lng + (to.lng - from.lng) * ease;
+        ref.marker.setLatLng([lat, lng]);
+
+        if (p < 1) {
+            ref.motionRaf = requestAnimationFrame(tick);
+        } else {
+            ref.motionRaf = null;
+        }
+    };
+
+    ref.motionRaf = requestAnimationFrame(tick);
+}
+
 function ensureLiveLayers() {
     if (!leafletMap) return;
     if (!liveAdsbLayer) {
@@ -368,8 +403,8 @@ window.addOrUpdateLiveAsset = function (asset) {
     const existing = liveMarkerRefs[asset.id];
 
     if (existing) {
-        // Update position
-        existing.marker.setLatLng([asset.lat, asset.lon]);
+        // Update position with smooth interpolation
+        animateMarkerMotion(existing, [asset.lat, asset.lon]);
 
         // OPTIMIZATION: Only update icon if heading changed (> 3°) — avoids SVG DOM churn
         const headingDelta = Math.abs(asset.heading - (existing.lastHeading || 0));
@@ -440,6 +475,7 @@ window.addOrUpdateLiveAsset = function (asset) {
             lastColor: asset.color,
             lastTrailLen: 0,
             source: asset._source,
+            motionRaf: null,
             _pendingTooltip: null
         };
     }
@@ -452,6 +488,10 @@ window.removeLiveAsset = function (id) {
     const layer = ref.source === 'ais' ? liveAisLayer : liveAdsbLayer;
     if (layer) {
         if (ref.marker) ref.marker.remove();
+        if (ref.motionRaf) {
+            cancelAnimationFrame(ref.motionRaf);
+            ref.motionRaf = null;
+        }
         ref.trailSegments.forEach(seg => {
             if (seg) seg.remove();
         });
