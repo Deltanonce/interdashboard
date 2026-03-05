@@ -10,32 +10,16 @@ const AssetTracker = (() => {
     const ADSB_PROXY = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL.replace(/\/api$/, '') + '/api/adsb-mil' : '/api/adsb-mil'; // Proxied via proxy-server.ps1
     const ADSB_DIRECT = 'https://api.adsb.lol/v2/mil'; // Fallback direct
     const ADSB_POLL_INTERVAL = 15000; // 15 sec
-    const AIS_WS_URL = 'wss://stream.aisstream.io/v0/stream';
     const MAX_TRAIL_POINTS = 200;
     const STALE_THRESHOLD = 300; // 5 min: remove asset if unseen for this long
     const SPOOFING_DISTANCE_KM = 100;
     const SPOOFING_TIME_SEC = 60;
-
-    // Bounding boxes for AIS: [[latMin, lonMin], [latMax, lonMax]]
-    // Expanded to cover busiest maritime chokepoints
-    const AIS_BOUNDING_BOXES = [
-        [[12, 41], [30, 44]],    // Red Sea (Bab el-Mandeb → Suez Canal)
-        [[23, 48], [30, 57]],    // Persian Gulf / Strait of Hormuz
-        [[11, 43], [16, 51]],    // Gulf of Aden / Bab el-Mandeb south
-        [[30, 31], [32, 35]],    // Suez Canal + Eastern Mediterranean
-        [[-2, 100], [8, 110]],   // Strait of Malacca (very busy)
-        [[-5, 105], [10, 120]],  // Natuna / South China Sea
-        [[20, 115], [28, 125]]   // Taiwan Strait
-    ];
 
     // ── STATE ──────────────────────────────────────────────────────────
     const liveAssets = {};      // id → normalized asset object
     const dirtyAssets = new Set(); // IDs that changed since last render
     const assetTimestampIndex = new Map(); // id → last-seen timestamp
     let adsbPollTimer = null;
-    let aisSocket = null;
-    let aisReconnectDelay = 2000;
-    let aisReconnectTimer = null;
     let aisRenderTimer = null;  // Debounce timer for AIS batch render
     let isRunning = false;
     let aisCountCache = 0;      // Incremental counter instead of O(n) filter
@@ -247,105 +231,13 @@ const AssetTracker = (() => {
     }
 
     // ══════════════════════════════════════════════════════════════════
-    //  AIS TRACKER (Dual-mode: WebSocket → HTTP Polling fallback)
+    //  AIS TRACKER (HTTP polling via backend relay)
     // ══════════════════════════════════════════════════════════════════
 
-    let aisWsFailCount = 0;
-    const AIS_WS_MAX_FAILURES = 4;
     const AIS_POLL_ENDPOINT = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL.replace(/\/api$/, '') + '/api/ais-poll' : '/api/ais-poll';
+    const AIS_STATUS_ENDPOINT = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL.replace(/\/api$/, '') + '/api/ais-status' : '/api/ais-status';
     const AIS_POLL_INTERVAL = 5000; // 5 seconds for faster updates
     let aisPollTimer = null;
-    let aisMode = 'http'; // Force HTTP mode — browser WS blocked (code 1006) from http:// origins
-    let aisMessageCount = 0;
-
-    function connectAis() {
-        const apiKey = (typeof AISSTREAM_API_KEY !== 'undefined' && AISSTREAM_API_KEY) ? AISSTREAM_API_KEY : null;
-        const PLACEHOLDER_KEY = 'GANTI_DENGAN_API_KEY_ANDA';
-        if (!apiKey || apiKey.length < 10 || apiKey === PLACEHOLDER_KEY) {
-            console.warn('[AIS] API key belum dikonfigurasi. Set AISSTREAM_API_KEY di config.js. Maritime tracking dinonaktifkan.');
-            return;
-        }
-
-        if (aisMode === 'http' || aisWsFailCount >= AIS_WS_MAX_FAILURES) {
-            // Switch to HTTP polling mode
-            aisMode = 'http';
-            console.log('[AIS] 🚢 Using HTTP polling mode (server-side relay)...');
-            startAisPolling();
-            return;
-        }
-
-        console.log(`[AIS] 🚢 Attempting WebSocket connection to aisstream.io... (attempt ${aisWsFailCount + 1}/${AIS_WS_MAX_FAILURES})`);
-        console.log(`[AIS] API Key: ${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}`);
-        console.log(`[AIS] Bounding boxes: ${JSON.stringify(AIS_BOUNDING_BOXES)}`);
-
-        try {
-            aisSocket = new WebSocket(AIS_WS_URL);
-
-            aisSocket.onopen = () => {
-                console.log('[AIS] ✅ WebSocket CONNECTED to aisstream.io!');
-                stats.aisConnected = true;
-                aisReconnectDelay = 2000;
-                aisWsFailCount = 0;
-                aisMessageCount = 0;
-
-                const subscribeMsg = {
-                    Apikey: apiKey,
-                    BoundingBoxes: AIS_BOUNDING_BOXES,
-                    FilterMessageTypes: ['PositionReport', 'ShipStaticData']
-                };
-                console.log('[AIS] Sending subscription:', JSON.stringify(subscribeMsg).substring(0, 200) + '...');
-                aisSocket.send(JSON.stringify(subscribeMsg));
-                updateAisStatusDot(true);
-            };
-
-            aisSocket.onmessage = (event) => {
-                aisMessageCount++;
-                try {
-                    const msg = JSON.parse(event.data);
-
-                    // Log first 5 messages for debugging, then every 50th
-                    if (aisMessageCount <= 5 || aisMessageCount % 50 === 0) {
-                        const msgType = msg.MessageType || 'unknown';
-                        const shipName = msg.MetaData?.ShipName || 'N/A';
-                        const mmsi = msg.MetaData?.MMSI || 'N/A';
-                        console.log(`[AIS] 📩 Message #${aisMessageCount}: type=${msgType}, ship=${shipName}, mmsi=${mmsi}`);
-                    }
-
-                    processAisMessage(msg);
-                } catch (e) {
-                    if (aisMessageCount <= 3) {
-                        console.warn('[AIS] ⚠️ Failed to parse message:', event.data.substring(0, 200));
-                    }
-                }
-            };
-
-            aisSocket.onclose = (event) => {
-                stats.aisConnected = false;
-                aisWsFailCount++;
-                updateAisStatusDot(false);
-                console.warn(`[AIS] ❌ WebSocket CLOSED — code: ${event.code}, reason: "${event.reason || 'none'}", clean: ${event.wasClean}, messages received: ${aisMessageCount}`);
-
-                if (aisWsFailCount >= AIS_WS_MAX_FAILURES) {
-                    console.warn(`[AIS] WebSocket failed ${aisWsFailCount} times. Switching to HTTP polling mode.`);
-                    aisMode = 'http';
-                    startAisPolling();
-                } else {
-                    console.warn(`[AIS] Attempt ${aisWsFailCount}/${AIS_WS_MAX_FAILURES}. Retrying in ${aisReconnectDelay / 1000}s...`);
-                    scheduleAisReconnect();
-                }
-            };
-
-            aisSocket.onerror = (err) => {
-                stats.aisConnected = false;
-                console.error('[AIS] ❌ WebSocket ERROR:', err);
-            };
-
-        } catch (err) {
-            console.error('[AIS] WebSocket creation failed:', err);
-            aisWsFailCount++;
-            scheduleAisReconnect();
-        }
-    }
 
     // ── AIS HTTP Polling (uses server-side relay) ──
     let aisPollCount = 0;
@@ -364,6 +256,9 @@ const AssetTracker = (() => {
             if (data.connected) {
                 stats.aisConnected = true;
                 updateAisStatusDot(true);
+            } else {
+                stats.aisConnected = false;
+                updateAisStatusDot(false);
             }
 
             if (data.messages && data.messages.length > 0) {
@@ -382,13 +277,27 @@ const AssetTracker = (() => {
         }
     }
 
+    async function pollAisStatus() {
+        if (!(typeof CONFIG !== 'undefined' && CONFIG.FEATURES && CONFIG.FEATURES.AIS_STATUS_ENDPOINT)) return;
+        try {
+            const res = await fetch(AIS_STATUS_ENDPOINT);
+            if (!res.ok) return;
+            const status = await res.json();
+            stats.aisConnected = Boolean(status.connected);
+            updateAisStatusDot(stats.aisConnected);
+        } catch (err) {
+            // no-op: endpoint is optional
+        }
+    }
+
     function startAisPolling() {
         if (aisPollTimer) return;
         pollAisHttp(); // Immediate first poll
         aisPollTimer = setInterval(() => {
             if (isRunning) pollAisHttp();
         }, AIS_POLL_INTERVAL);
-        console.log('[AIS] HTTP polling started (every 10s via /api/ais-poll)');
+        pollAisStatus();
+        console.log('[AIS] HTTP polling started (every 5s via /api/ais-poll)');
     }
 
     function updateAisStatusDot(connected) {
@@ -397,17 +306,6 @@ const AssetTracker = (() => {
             dot.classList.toggle('connected', connected);
         }
     }
-
-    function scheduleAisReconnect() {
-        if (aisReconnectTimer) clearTimeout(aisReconnectTimer);
-        aisReconnectTimer = setTimeout(() => {
-            if (isRunning) {
-                connectAis();
-                aisReconnectDelay = Math.min(aisReconnectDelay * 2, 30000);
-            }
-        }, aisReconnectDelay);
-    }
-
 
     function getVesselTypeName(code) {
         if (!code) return 'Vessel';
@@ -519,15 +417,12 @@ const AssetTracker = (() => {
     }
 
     function disconnectAis() {
-        if (aisSocket) {
-            aisSocket.close();
-            aisSocket = null;
-        }
-        if (aisReconnectTimer) {
-            clearTimeout(aisReconnectTimer);
-            aisReconnectTimer = null;
+        if (aisPollTimer) {
+            clearInterval(aisPollTimer);
+            aisPollTimer = null;
         }
         stats.aisConnected = false;
+        updateAisStatusDot(false);
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -601,7 +496,7 @@ const AssetTracker = (() => {
         isRunning = true;
         console.log('[AssetTracker] ████ INITIALIZING REAL-TIME TELEMETRY ████');
         startAdsbPolling();
-        connectAis();
+        startAisPolling();
 
         // Periodic stale cleanup every 60s
         if (staleCleanupTimer) clearInterval(staleCleanupTimer);
