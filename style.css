@@ -43,9 +43,70 @@ body {
   background: #000;
 }
 
+.crt-shell {
+  position: relative;
+  min-height: 100vh;
+  animation: crtShellFlicker 7s steps(1, end) infinite;
+}
+
+.crt-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  pointer-events: none;
+  opacity: 0.12;
+  background:
+    repeating-linear-gradient(0deg,
+      rgba(255, 255, 255, 0.03) 0,
+      rgba(255, 255, 255, 0.03) 1px,
+      transparent 1px,
+      transparent 3px),
+    repeating-linear-gradient(90deg,
+      rgba(0, 0, 0, 0.05) 0,
+      rgba(0, 0, 0, 0.05) 2px,
+      transparent 2px,
+      transparent 4px);
+}
+
+.wv-viewport {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.wv-viewport::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: inset 0 0 160px rgba(0, 0, 0, 0.7);
+}
+
+@keyframes crtShellFlicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  35% {
+    opacity: 0.992;
+  }
+
+  63% {
+    opacity: 0.996;
+  }
+
+  88% {
+    opacity: 0.99;
+  }
+}
+
 /* Full-screen map as background */
 #satellite-map {
-  position: fixed !important;
+  position: absolute !important;
   inset: 0;
   width: 100vw !important;
   height: 100vh !important;
