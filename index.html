@@ -36,7 +36,10 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 
-<body>
+<body class="wv-crt">
+
+  <div class="wv-scanlines" aria-hidden="true"></div>
+  <div class="wv-vignette" aria-hidden="true"></div>
 
   <!-- BOOT SEQUENCE OVERLAY -->
   <div class="boot-sequence" id="boot-sequence">
@@ -66,6 +69,13 @@
       <span id="live-label">LIVE — TIMUR TENGAH</span>
     </div>
     <div class="wv-top-right">
+      <span id="utc-clock">2026-03-01 15:32:16Z</span>
+      <span class="wv-sep">│</span>
+      <span class="wv-throughput">RECV <span id="recv-rate">14.8</span> MB/S</span>
+      <span class="wv-throughput send">SEND <span id="send-rate">2.1</span> MB/S</span>
+      <span class="wv-sep">│</span>
+      <span class="wv-style">ACTIVE STYLE <b>CRT</b></span>
+      <span class="wv-sep">│</span>
       <span class="wv-rec-dot"></span>
       <span>REC</span>
       <span id="clock-display">--:--:-- WIB</span>
@@ -139,6 +149,8 @@
     </div>
   </aside>
 
+  <div class="wv-orbital-mask" aria-hidden="true"></div>
+
   <!-- ===== RIGHT HUD PANELS (Floating) ===== -->
   <aside class="wv-hud-right">
     <!-- Signal/Noise -->
@@ -185,6 +197,19 @@
   </aside>
 
   <!-- ===== BOTTOM TOOLBAR (Layer Pills) ===== -->
+  <footer class="wv-timeline-wrap">
+    <div class="wv-timeline-track">
+      <div class="wv-timeline-cluster red" style="left:11%"></div>
+      <div class="wv-timeline-cluster cyan" style="left:34%"></div>
+      <div class="wv-timeline-cluster orange" style="left:58%"></div>
+      <div class="wv-timeline-cluster pink" style="left:76%"></div>
+      <div class="wv-timeline-playhead" id="timeline-playhead"></div>
+      <div class="wv-timeline-times">
+        <span>00:00:00</span><span>00:15:00</span><span>00:30:00</span><span>00:45:00</span><span>01:00:00</span>
+      </div>
+    </div>
+  </footer>
+
   <nav class="wv-bottom-toolbar">
     <div class="wv-pill-group">
       <button class="wv-pill active" data-color="cyan" data-live-layer="adsb">

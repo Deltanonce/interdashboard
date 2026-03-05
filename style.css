@@ -4777,3 +4777,150 @@ details > summary::-webkit-details-marker {
 .wv-panel:hover {
   box-shadow: 0 0 12px rgba(0, 212, 255, 0.08);
 }
+
+/* ===== WORLDVIEW OVERHAUL (CRT Orbital Theme) ===== */
+body.wv-crt {
+  font-family: var(--font-data);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  background: radial-gradient(circle at 50% 50%, #06161f 0%, #02060a 60%, #000 100%);
+}
+
+.wv-scanlines,
+.wv-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1400;
+}
+
+.wv-scanlines {
+  opacity: 0.23;
+  background:
+    linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.28) 50%),
+    linear-gradient(90deg, rgba(255, 0, 0, 0.05), rgba(0, 255, 255, 0.02), rgba(0, 0, 255, 0.05));
+  background-size: 100% 4px, 3px 100%;
+  animation: crt-flicker 0.12s infinite;
+}
+
+.wv-vignette {
+  box-shadow: inset 0 0 220px rgba(0, 0, 0, 0.92);
+}
+
+@keyframes crt-flicker {
+  0% { opacity: 0.24; }
+  50% { opacity: 0.2; }
+  100% { opacity: 0.25; }
+}
+
+#satellite-map {
+  clip-path: ellipse(34vw 41vh at 50% 49%);
+  filter: saturate(1.15) contrast(1.08) brightness(0.95);
+}
+
+.wv-orbital-mask {
+  position: fixed;
+  left: 50%;
+  top: 49%;
+  width: 68vw;
+  height: 82vh;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px solid rgba(0, 230, 255, 0.2);
+  box-shadow: 0 0 80px rgba(0, 230, 255, 0.13), inset 0 0 60px rgba(0, 150, 255, 0.15);
+  pointer-events: none;
+  z-index: 60;
+}
+
+.wv-top-bar {
+  background: linear-gradient(180deg, rgba(5, 13, 18, 0.94) 0%, rgba(5, 13, 18, 0.48) 100%);
+  border-bottom-color: rgba(0, 242, 255, 0.16);
+  color: rgba(0, 242, 255, 0.72);
+}
+
+.wv-throughput {
+  color: #34d399;
+}
+.wv-throughput.send {
+  color: #fbbf24;
+}
+.wv-style b {
+  color: var(--accent-cyan);
+}
+
+.wv-hud-left,
+.wv-hud-right {
+  top: 86px;
+  max-height: calc(100vh - 220px);
+}
+
+.wv-panel {
+  background: rgba(10, 26, 31, 0.68);
+  border-color: rgba(0, 242, 255, 0.2);
+  border-radius: 10px;
+}
+
+.wv-timeline-wrap {
+  position: fixed;
+  left: 14px;
+  right: 14px;
+  bottom: 64px;
+  z-index: 1150;
+}
+
+.wv-timeline-track {
+  position: relative;
+  height: 24px;
+  border: 1px solid rgba(0, 242, 255, 0.18);
+  background: rgba(7, 18, 28, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.wv-timeline-track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 11px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.wv-timeline-cluster {
+  position: absolute;
+  top: 9px;
+  height: 4px;
+  width: 34px;
+  border-radius: 8px;
+}
+.wv-timeline-cluster.red { background: rgba(255, 63, 63, 0.8); }
+.wv-timeline-cluster.cyan { background: rgba(0, 242, 255, 0.8); }
+.wv-timeline-cluster.orange { background: rgba(255, 170, 0, 0.8); }
+.wv-timeline-cluster.pink { background: rgba(250, 85, 190, 0.85); }
+
+.wv-timeline-playhead {
+  position: absolute;
+  left: 52%;
+  top: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #00f2ff;
+  box-shadow: 0 0 12px rgba(0, 242, 255, 0.9);
+}
+
+.wv-timeline-times {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 28px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: rgba(0, 242, 255, 0.68);
+}
+
+.wv-bottom-toolbar {
+  bottom: 8px;
+  border-top-color: rgba(0, 242, 255, 0.2);
+  background: rgba(1, 7, 12, 0.86);
+}

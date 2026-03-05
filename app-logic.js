@@ -123,6 +123,7 @@ async function runBootSequence() {
         updateClock();
         if (masterClockTimer) clearInterval(masterClockTimer);
         masterClockTimer = setInterval(updateClock, 1000);
+        startThroughputTicker();
     } catch (e) { }
 
     try { initMap(); } catch (e) { }
@@ -208,8 +209,22 @@ function updateClock() {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
     const clockEl = document.getElementById('clock-display');
     const dateEl = document.getElementById('date-display');
+    const utcEl = document.getElementById('utc-clock');
     if (clockEl) clockEl.textContent = `${p(wib.getHours())}:${p(wib.getMinutes())}:${p(wib.getSeconds())} WIB`;
     if (dateEl) dateEl.textContent = `${p(wib.getDate())} ${months[wib.getMonth()]} ${wib.getFullYear()}`;
+    if (utcEl) utcEl.textContent = now.toISOString().replace('T', ' ').split('.')[0] + 'Z';
+}
+
+function startThroughputTicker() {
+    const recvEl = document.getElementById('recv-rate');
+    const sendEl = document.getElementById('send-rate');
+    if (!recvEl && !sendEl) return;
+    const tick = () => {
+        if (recvEl) recvEl.textContent = (14 + Math.random() * 2.5).toFixed(1);
+        if (sendEl) sendEl.textContent = (2 + Math.random() * 0.8).toFixed(1);
+    };
+    tick();
+    setInterval(tick, 2200);
 }
 
 // ===== COUNTDOWN =====
