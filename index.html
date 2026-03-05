@@ -50,8 +50,13 @@
     </div>
   </div>
 
-  <!-- ===== FULL-SCREEN MAP (BACKGROUND) ===== -->
-  <div id="satellite-map"></div>
+  <div class="wv-tactical-viewport">
+    <div class="wv-center-focus-region">
+      <div class="wv-orbital-core" aria-hidden="true">
+        <div id="satellite-map"></div>
+        <div class="wv-orbital-overlay"></div>
+      </div>
+    </div>
 
   <!-- ===== TOP BAR (Floating) ===== -->
   <header class="wv-top-bar">
@@ -183,6 +188,7 @@
       <button class="wv-btn-export" id="pdf-btn">⬇ PDF</button>
     </div>
   </aside>
+</div>
 
   <!-- ===== BOTTOM TOOLBAR (Layer Pills) ===== -->
   <nav class="wv-bottom-toolbar">
