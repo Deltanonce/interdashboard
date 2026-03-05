@@ -184,35 +184,46 @@
     </div>
   </aside>
 
-  <!-- ===== BOTTOM TOOLBAR (Layer Pills) ===== -->
-  <nav class="wv-bottom-toolbar">
-    <div class="wv-pill-group">
-      <button class="wv-pill active" data-color="cyan" data-live-layer="adsb">
-        <span class="wv-pill-dot" style="background:var(--accent-cyan)"></span>
-        AIR (ADS-B) <span class="wv-pill-val" id="toolbar-adsb-count">0</span>
-      </button>
-      <button class="wv-pill active" data-color="green" data-live-layer="ais">
-        <span class="wv-pill-dot connected" id="toolbar-ais-dot"></span>
-        SEA (AIS) <span class="wv-pill-val" id="toolbar-ais-count">0</span>
-      </button>
-      <button class="wv-pill active" data-color="blue" data-layer="naval">
-        NAVAL
-      </button>
-      <button class="wv-pill active" data-color="orange" data-layer="missile">
-        MISSILE
-      </button>
-      <button class="wv-pill active" data-color="purple" data-layer="airbase">
-        AIRBASE
-      </button>
-      <button class="wv-pill active" data-color="red" data-layer="proxy">
-        PROXY
-      </button>
+  <!-- ===== TIMELINE FOOTER + LAYER CONTROLS ===== -->
+  <footer class="wv-bottom-toolbar">
+    <div class="wv-timeline-row">
+      <button class="wv-pill wv-pill-special" id="timeline-play-toggle" aria-label="Play timeline">▶ PLAY</button>
+      <label class="timeline-speed-wrap" for="timeline-speed">SPD</label>
+      <select id="timeline-speed" class="timeline-speed-select" aria-label="Timeline speed">
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option>
+        <option value="2">2x</option>
+        <option value="4">4x</option>
+      </select>
+      <span class="timeline-current" id="timeline-current-time">T+00:00</span>
+      <div class="timeline-track-wrap" id="timeline-track-wrap">
+        <div class="timeline-track" id="timeline-track">
+          <div class="timeline-ticks" id="timeline-ticks"></div>
+          <div class="timeline-events" id="timeline-events"></div>
+          <div class="timeline-playhead" id="timeline-playhead"></div>
+        </div>
+      </div>
     </div>
-    <div class="wv-pill-sep"></div>
-    <button class="wv-pill wv-pill-special" id="btn-analysis">
-      ▶ ANALYSIS PANEL
-    </button>
-  </nav>
+
+    <div class="wv-layer-row">
+      <div class="wv-pill-group">
+        <button class="wv-pill active" data-color="cyan" data-live-layer="adsb">
+          <span class="wv-pill-dot" style="background:var(--accent-cyan)"></span>
+          AIR (ADS-B) <span class="wv-pill-val" id="toolbar-adsb-count">0</span>
+        </button>
+        <button class="wv-pill active" data-color="green" data-live-layer="ais">
+          <span class="wv-pill-dot connected" id="toolbar-ais-dot"></span>
+          SEA (AIS) <span class="wv-pill-val" id="toolbar-ais-count">0</span>
+        </button>
+        <button class="wv-pill active" data-color="blue" data-layer="naval">NAVAL</button>
+        <button class="wv-pill active" data-color="orange" data-layer="missile">MISSILE</button>
+        <button class="wv-pill active" data-color="purple" data-layer="airbase">AIRBASE</button>
+        <button class="wv-pill active" data-color="red" data-layer="proxy">PROXY</button>
+      </div>
+      <div class="wv-pill-sep"></div>
+      <button class="wv-pill wv-pill-special" id="btn-analysis">▶ ANALYSIS PANEL</button>
+    </div>
+  </footer>
 
   <!-- ===== COORDINATE STATUS BAR (Bottom-Left) ===== -->
   <div class="wv-coord-bar">

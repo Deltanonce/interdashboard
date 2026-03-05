@@ -308,25 +308,116 @@ body {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+  flex-direction: column;
+  gap: 8px;
+  width: min(980px, calc(100vw - 24px));
+  padding: 10px 12px;
   background: var(--glass-bg);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--glass-border);
-  border-radius: 24px;
+  border-radius: 16px;
   z-index: 1000;
-  transition: all 0.3s ease;
 }
 
-.wv-bottom-toolbar:hover {
-  border-color: rgba(0, 212, 255, 0.25);
+.wv-timeline-row,
+.wv-layer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.timeline-speed-wrap {
+  font-family: var(--font-data);
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.timeline-speed-select {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-family: var(--font-data);
+  font-size: 10px;
+}
+
+.timeline-current {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--accent-cyan);
+  min-width: 64px;
+}
+
+.timeline-track-wrap {
+  flex: 1;
+}
+
+.timeline-track {
+  position: relative;
+  height: 28px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.timeline-ticks {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  padding: 0 4px;
+}
+
+.timeline-tick {
+  width: 1px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.timeline-events {
+  position: absolute;
+  inset: 0;
+}
+
+.timeline-event-cluster {
+  position: absolute;
+  top: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 110, 64, 0.9);
+  box-shadow: 0 0 8px rgba(255, 110, 64, 0.6);
+}
+
+.timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  left: 0;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.8);
+}
+
+.timeline-playhead::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
 }
 
 .wv-pill-group {
   display: flex;
   gap: 4px;
+  flex-wrap: wrap;
 }
 
 .wv-pill {
@@ -458,7 +549,7 @@ body {
 /* ── COORDINATE BAR ── */
 .wv-coord-bar {
   position: fixed;
-  bottom: 52px;
+  bottom: 118px;
   left: 12px;
   display: flex;
   align-items: center;
