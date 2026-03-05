@@ -1,2 +1,8 @@
-config.js
-*.env
+# Environment secrets
+.env
+.env.*
+*.env.local
+secrets.*
+
+# Local overrides
+config.local.js
