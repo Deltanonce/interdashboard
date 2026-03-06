@@ -20,6 +20,28 @@ const MIME_TYPES = {
     '.woff2': 'font/woff2',
 };
 
+const AIS_WS_URL = 'wss://stream.aisstream.io/v0/stream';
+const AIS_BOUNDING_BOXES = [
+    [[12, 41], [30, 44]],
+    [[23, 48], [30, 57]],
+    [[11, 43], [16, 51]],
+    [[30, 31], [32, 35]],
+    [[-2, 100], [8, 110]],
+    [[-5, 105], [10, 120]],
+    [[20, 115], [28, 125]]
+];
+const MAX_AIS_MESSAGES = 500;
+const aisState = {
+    connected: false,
+    messages: [],
+    lastError: null,
+    lastSeen: null,
+    reconnectDelayMs: 3000,
+    ws: null
+};
+
+const AIS_KEY = process.env.AISSTREAM_API_KEY || '';
+
 function proxyAdsb(req, res) {
     const options = {
         hostname: 'api.adsb.lol',
@@ -29,7 +51,7 @@ function proxyAdsb(req, res) {
     };
 
     const proxyReq = https.request(options, (proxyRes) => {
-        let data = [];
+        const data = [];
         proxyRes.on('data', chunk => data.push(chunk));
         proxyRes.on('end', () => {
             const body = Buffer.concat(data);
@@ -49,16 +71,89 @@ function proxyAdsb(req, res) {
     proxyReq.end();
 }
 
+function startAisRelay() {
+    if (!AIS_KEY || AIS_KEY === 'GANTI_DENGAN_API_KEY_ANDA') {
+        console.warn('[AIS] Relay disabled: AISSTREAM_API_KEY not configured in environment.');
+        return;
+    }
+
+    if (typeof WebSocket === 'undefined') {
+        console.warn('[AIS] Relay disabled: global WebSocket is not available in this Node runtime.');
+        return;
+    }
+
+    const connect = () => {
+        try {
+            const ws = new WebSocket(AIS_WS_URL);
+            aisState.ws = ws;
+
+            ws.onopen = () => {
+                aisState.connected = true;
+                aisState.lastError = null;
+                aisState.reconnectDelayMs = 3000;
+                ws.send(JSON.stringify({
+                    Apikey: AIS_KEY,
+                    BoundingBoxes: AIS_BOUNDING_BOXES,
+                    FilterMessageTypes: ['PositionReport', 'ShipStaticData']
+                }));
+                console.log('[AIS] Relay connected.');
+            };
+
+            ws.onmessage = (event) => {
+                const payload = typeof event.data === 'string' ? event.data : String(event.data);
+                aisState.messages.push(payload);
+                if (aisState.messages.length > MAX_AIS_MESSAGES) {
+                    aisState.messages.splice(0, aisState.messages.length - MAX_AIS_MESSAGES);
+                }
+                aisState.lastSeen = new Date().toISOString();
+            };
+
+            ws.onerror = () => {
+                aisState.connected = false;
+                aisState.lastError = 'WebSocket error';
+            };
+
+            ws.onclose = () => {
+                aisState.connected = false;
+                aisState.ws = null;
+                setTimeout(connect, aisState.reconnectDelayMs);
+                aisState.reconnectDelayMs = Math.min(30000, aisState.reconnectDelayMs * 2);
+            };
+        } catch (err) {
+            aisState.connected = false;
+            aisState.lastError = err.message;
+            setTimeout(connect, aisState.reconnectDelayMs);
+            aisState.reconnectDelayMs = Math.min(30000, aisState.reconnectDelayMs * 2);
+        }
+    };
+
+    connect();
+}
+
+function pollAis(req, res) {
+    const batch = aisState.messages.splice(0, aisState.messages.length);
+    const body = JSON.stringify({
+        connected: aisState.connected || batch.length > 0,
+        messages: batch,
+        count: batch.length,
+        lastSeen: aisState.lastSeen,
+        lastError: aisState.lastError
+    });
+
+    res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+    });
+    res.end(body);
+}
+
 const server = http.createServer((req, res) => {
     const url = req.url.split('?')[0];
 
-    // CORS proxy for ADS-B
-    if (url === '/api/adsb-mil') {
-        return proxyAdsb(req, res);
-    }
+    if (url === '/api/adsb-mil') return proxyAdsb(req, res);
+    if (url === '/api/ais-poll') return pollAis(req, res);
 
-    // Static file serving
-    let filePath = path.join(ROOT, url === '/' ? 'index.html' : url);
+    const filePath = path.join(ROOT, url === '/' ? 'index.html' : url);
     const ext = path.extname(filePath);
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
@@ -73,7 +168,10 @@ const server = http.createServer((req, res) => {
     });
 });
 
+startAisRelay();
+
 server.listen(PORT, () => {
     console.log(`SERVER_READY on http://localhost:${PORT}/`);
     console.log(`ADS-B Proxy: http://localhost:${PORT}/api/adsb-mil`);
+    console.log(`AIS Proxy:   http://localhost:${PORT}/api/ais-poll`);
 });
