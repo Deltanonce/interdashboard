@@ -2,11 +2,11 @@
 
 const REQUIRED_VARS = [
   'NODE_ENV',
-  'PORT',
-  'CESIUM_ACCESS_TOKEN'
+  'PORT'
 ];
 
 const OPTIONAL_VARS = {
+  'CESIUM_ACCESS_TOKEN': '3D terrain and Cesium Ion features will be unavailable (frontend falls back to 2D Leaflet mode)',
   'AISSTREAM_API_KEY': 'AIS features will be disabled',
   'TELEGRAM_BOT_TOKEN': 'Telegram alerts will be disabled',
   'ENABLE_DAILY_BRIEFING': 'Defaults to true'
