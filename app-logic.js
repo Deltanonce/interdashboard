@@ -1684,54 +1684,75 @@ function initTabEvents() {
     }
 }
 
+let delegatedUiEventsBound = false;
+
+function handleDelegatedUIClick(e) {
+    const challengeBtn = e.target.closest('[data-challenge-id]');
+    if (challengeBtn) {
+        const id = challengeBtn.getAttribute('data-challenge-id');
+        if (id) toggleChallenge(id);
+        return;
+    }
+
+    const layerBtn = e.target.closest('.wv-pill[data-layer]');
+    if (layerBtn) {
+        const cat = layerBtn.getAttribute('data-layer');
+        if (cat && typeof window.toggleLayer === 'function') window.toggleLayer(cat, layerBtn);
+        return;
+    }
+
+    const liveLayerBtn = e.target.closest('.wv-pill[data-live-layer]');
+    if (liveLayerBtn) {
+        const src = liveLayerBtn.getAttribute('data-live-layer');
+        if (src && typeof window.toggleLiveLayer === 'function') window.toggleLiveLayer(src, liveLayerBtn);
+        return;
+    }
+
+    const perspectiveBtn = e.target.closest('.pv-btn[data-perspective]');
+    if (perspectiveBtn) {
+        const p = perspectiveBtn.getAttribute('data-perspective');
+        if (p) setPerspective(p, perspectiveBtn);
+        return;
+    }
+
+    const feedFilterBtn = e.target.closest('.ff-btn[data-feed-filter]');
+    if (feedFilterBtn) {
+        const f = feedFilterBtn.getAttribute('data-feed-filter');
+        if (f) filterFeed(f);
+        return;
+    }
+
+    const actionBtn = e.target.closest('#btn-analysis, #close-analysis-btn, #refresh-btn, #pdf-btn, #snapshot-btn, #uv-toggle-btn, #rp-ack-btn');
+    if (!actionBtn) return;
+
+    switch (actionBtn.id) {
+        case 'btn-analysis':
+        case 'close-analysis-btn':
+            if (typeof window.toggleAnalysisPanel === 'function') window.toggleAnalysisPanel();
+            break;
+        case 'refresh-btn':
+            triggerRefresh();
+            break;
+        case 'pdf-btn':
+            generatePDFReport();
+            break;
+        case 'snapshot-btn':
+            saveSnapshot();
+            break;
+        case 'uv-toggle-btn':
+            toggleUnverified();
+            break;
+        case 'rp-ack-btn':
+            acknowledgeRedPhone();
+            break;
+    }
+}
+
 function initToolbarEvents() {
-    document.querySelectorAll('.wv-pill[data-layer]').forEach(btn => {
-        btn.addEventListener('click', function () {
-            const cat = this.getAttribute('data-layer');
-            if (cat && typeof window.toggleLayer === 'function') window.toggleLayer(cat, this);
-        });
-    });
-    document.querySelectorAll('.wv-pill[data-live-layer]').forEach(btn => {
-        btn.addEventListener('click', function () {
-            const src = this.getAttribute('data-live-layer');
-            if (src && typeof window.toggleLiveLayer === 'function') window.toggleLiveLayer(src, this);
-        });
-    });
-
-    const btnAnalysis = document.getElementById('btn-analysis');
-    if (btnAnalysis) btnAnalysis.addEventListener('click', () => {
-        if (typeof window.toggleAnalysisPanel === 'function') window.toggleAnalysisPanel();
-    });
-    const closeAnalysisBtn = document.getElementById('close-analysis-btn');
-    if (closeAnalysisBtn) closeAnalysisBtn.addEventListener('click', () => {
-        if (typeof window.toggleAnalysisPanel === 'function') window.toggleAnalysisPanel();
-    });
-
-    const refreshBtn = document.getElementById('refresh-btn');
-    if (refreshBtn) refreshBtn.addEventListener('click', triggerRefresh);
-
-    const pdfBtn = document.getElementById('pdf-btn');
-    if (pdfBtn) pdfBtn.addEventListener('click', generatePDFReport);
-
-    const snapBtn = document.getElementById('snapshot-btn');
-    if (snapBtn) snapBtn.addEventListener('click', saveSnapshot);
-
-    const uvBtn = document.getElementById('uv-toggle-btn');
-    if (uvBtn) uvBtn.addEventListener('click', toggleUnverified);
-
-    document.querySelectorAll('.pv-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
-            const p = this.getAttribute('data-perspective');
-            if (p) setPerspective(p, this);
-        });
-    });
-
-    document.querySelectorAll('.ff-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
-            const f = this.getAttribute('data-feed-filter');
-            if (f) filterFeed(f);
-        });
-    });
+    if (!delegatedUiEventsBound) {
+        document.addEventListener('click', handleDelegatedUIClick);
+        delegatedUiEventsBound = true;
+    }
 
     const credFilter = document.getElementById('high-cred-filter');
     if (credFilter) credFilter.addEventListener('change', toggleCredFilter);
@@ -1749,26 +1770,9 @@ function initAnalysisPanelEvents() {
     });
 }
 
-function initRedPhoneEvents() {
-    const rpAckBtn = document.getElementById('rp-ack-btn');
-    if (rpAckBtn) rpAckBtn.addEventListener('click', acknowledgeRedPhone);
-}
-
-function initDynamicEventDelegation() {
-    document.addEventListener('click', function (e) {
-        const challengeBtn = e.target.closest('[data-challenge-id]');
-        if (challengeBtn) {
-            const id = challengeBtn.getAttribute('data-challenge-id');
-            if (id) toggleChallenge(id);
-        }
-    });
-}
-
 document.addEventListener('DOMContentLoaded', () => {
     initTabEvents();
     initToolbarEvents();
     initAnalysisPanelEvents();
-    initRedPhoneEvents();
-    initDynamicEventDelegation();
     console.log('[INIT] UI Event Binding Complete.');
 });

@@ -5,6 +5,13 @@ let markerClusterGroup = null;
 
 let boundaryLayer = null;
 
+function getEl(id) {
+    if (typeof window !== 'undefined' && window.DOMCache && typeof window.DOMCache.get === 'function') {
+        return window.DOMCache.get(id);
+    }
+    return document.getElementById(id);
+}
+
 // --- SVG ICON TEMPLATES (Military HUD Style) ---
 const ASSET_SVG = {
     aircraft: (color) => `<svg viewBox="0 0 40 40" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
@@ -115,12 +122,12 @@ function initMap() {
 
     // Sync bottom toolbar pill counts to new unique IDs
     setInterval(() => {
-        const adsbVal = document.getElementById('live-adsb-count');
-        const aisVal = document.getElementById('live-ais-count');
-        const toolbarAdsb = document.getElementById('toolbar-adsb-count');
-        const toolbarAis = document.getElementById('toolbar-ais-count');
-        const toolbarAisDot = document.getElementById('toolbar-ais-dot');
-        const aisStatusDot = document.getElementById('ais-status-dot');
+        const adsbVal = getEl('live-adsb-count');
+        const aisVal = getEl('live-ais-count');
+        const toolbarAdsb = getEl('toolbar-adsb-count');
+        const toolbarAis = getEl('toolbar-ais-count');
+        const toolbarAisDot = getEl('toolbar-ais-dot');
+        const aisStatusDot = getEl('ais-status-dot');
         if (adsbVal && toolbarAdsb) toolbarAdsb.textContent = adsbVal.textContent;
         if (aisVal && toolbarAis) toolbarAis.textContent = aisVal.textContent;
         if (aisStatusDot && toolbarAisDot) {
