@@ -22,10 +22,10 @@ const AssetTracker = (() => {
     const SPOOFING_DISTANCE_KM = 100;
     const SPOOFING_TIME_SEC = 60;
     const MIDDLE_EAST_BOUNDS = {
-        latMin: 10,
-        latMax: 43,
+        latMin: -11,
+        latMax: 55,
         lonMin: 20,
-        lonMax: 66
+        lonMax: 155
     };
 
     // Bounding boxes for AIS: [[latMin, lonMin], [latMax, lonMax]]
@@ -663,12 +663,18 @@ const AssetTracker = (() => {
     // OPTIMIZATION: Only push dirty assets to map, not the entire set
     function flushDirtyToMap() {
         if (typeof window.addOrUpdateLiveAsset !== 'function' || dirtyAssets.size === 0) return;
+        if (window._mapIsZooming) return; // Pause rendering during zoom for smoothness
 
         dirtyAssets.forEach(id => {
             const asset = liveAssets[id];
             if (asset) window.addOrUpdateLiveAsset(asset);
         });
         dirtyAssets.clear();
+
+        // Ensure map markers are in sync with tracker state
+        if (typeof window.syncLiveAssets === 'function') {
+            window.syncLiveAssets(Object.keys(liveAssets));
+        }
     }
 
 

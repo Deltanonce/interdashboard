@@ -1,536 +1,290 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="id">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>INTEL DASHBOARD v4.0 — Proyeksi Konflik Timur Tengah</title>
-  <meta name="description"
-    content="Sistem analitik intelijen real-time: I&W Matrix, ACH, Red Teaming, Net Assessment, Cone of Plausibility, SIGINT Fusion — Konflik Iran-Israel-AS" />
-  <meta name="theme-color" content="#06101a" />
-  <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://server.arcgisonline.com; connect-src 'self' https://api.adsb.lol wss://stream.aisstream.io http://localhost:8888; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none';" />
-  <link rel="icon" href="data:," />
-
+  <title>INTEL DASHBOARD v4.0 — Spy Satellite Simulator</title>
+  <meta name="description" content="Spy Satellite Command Center" />
+  <meta name="theme-color" content="#05070a" />
+  
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@400;600;800&display=swap"
-    rel="stylesheet" media="print" id="font-link" />
-  <noscript>
-    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@600&display=swap"
-      rel="stylesheet">
-  </noscript>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet" />
 
-  <!-- Leaflet & Extensions -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
-  <link rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+  <!-- CesiumJS & Satellite.js -->
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.116/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.116/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/5.0.0/satellite.min.js"></script>
 
-  <!-- PDF Export -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="worldview-overhaul.css" />
+  <!-- Styles -->
+  <link rel="stylesheet" href="style-spy.css" />
 </head>
 
-<body class="wv-crt">
+<body class="spy-sim">
 
-  <div class="wv-scanlines" aria-hidden="true"></div>
-  <div class="wv-vignette" aria-hidden="true"></div>
-
-  <!-- BOOT SEQUENCE OVERLAY -->
-  <div class="boot-sequence" id="boot-sequence">
-    <div class="boot-content">
-      <div class="boot-logo">⬡</div>
-      <div class="boot-title">STRATEGIC COMMAND NETWORK</div>
-      <div class="boot-log" id="boot-log"></div>
-      <div class="boot-progress">
-        <div class="boot-bar" id="boot-bar"></div>
-      </div>
-    </div>
+  <!-- Coordinate Crosshair -->
+  <div id="coord-crosshair">
+    <div id="coord-readout">00.0000, 00.0000</div>
   </div>
 
-  <!-- ===== FULL-SCREEN MAP (BACKGROUND) ===== -->
-  <div id="satellite-map"></div>
-
-  <!-- ===== TOP BAR (Floating) ===== -->
-  <header class="wv-top-bar">
-    <div class="wv-top-left">
-      <span class="wv-logo">⬡</span>
-      <span class="wv-title">WORLDVIEW</span>
-      <span class="wv-tagline">NO PLACE LEFT BEHIND</span>
-      <span class="wv-sep">│</span>
-      <span class="wv-classified">TOP SECRET // SI-TK // NOFORN</span>
+  <!-- Top Bar -->
+  <header class="spy-topbar">
+    <div style="font-size:16px; font-weight:bold; letter-spacing:2px; display:flex; align-items:center; gap:10px;">
+      <span>⬡</span> COMMAND CENTER // SPY SATELLITE
     </div>
-    <div class="wv-top-center">
-      <span class="wv-live-dot"></span>
-      <span id="live-label">LIVE — TIMUR TENGAH</span>
+    <div class="shader-controls">
+      <button class="shader-btn active" onclick="applyShader('normal'); this.parentElement.querySelectorAll('.shader-btn').forEach(b=>b.classList.remove('active')); this.classList.add('active')">Standard</button>
+      <button class="shader-btn" onclick="applyShader('thermal'); this.parentElement.querySelectorAll('.shader-btn').forEach(b=>b.classList.remove('active')); this.classList.add('active')">Thermal</button>
+      <button class="shader-btn" onclick="applyShader('night'); this.parentElement.querySelectorAll('.shader-btn').forEach(b=>b.classList.remove('active')); this.classList.add('active')">Night</button>
+      <button class="shader-btn intel-report" onclick="triggerOmegaProtocol()">ACTIVATE OMEGA PROTOCOL</button>
     </div>
-    <div class="wv-top-right">
-      <span id="utc-clock">2026-03-01 15:32:16Z</span>
-      <span class="wv-sep">│</span>
-      <span class="wv-throughput">RECV <span id="recv-rate">14.8</span> MB/S</span>
-      <span class="wv-throughput send">SEND <span id="send-rate">2.1</span> MB/S</span>
-      <span class="wv-sep">│</span>
-      <span>REF <span id="refresh-count">0</span></span>
-      <span class="wv-sep">│</span>
-      <span>LAST <span id="last-update">--:--</span></span>
-      <span class="wv-sep">│</span>
-      <span class="wv-style">ACTIVE STYLE <b>CRT</b></span>
-      <span class="wv-sep">│</span>
-      <span class="wv-rec-dot"></span>
-      <span>REC</span>
-      <span id="clock-display">--:--:-- WIB</span>
-      <span class="wv-sep">│</span>
-      <span id="date-display">-- Mar 2026</span>
+    <div class="health-indicator">
+      <span>SYS STATUS:</span>
+      <div class="health-light" id="sys-health-light"></div>
+      <span id="sys-health-text">OFFLINE</span>
     </div>
   </header>
 
-  <!-- ===== LEFT HUD PANELS (Floating) ===== -->
-  <aside class="wv-hud-left">
-    <!-- Threat Level -->
-    <div class="wv-panel" id="threat-card">
-      <div class="wv-panel-title">THREAT LEVEL</div>
-      <div class="wv-threat-display">
-        <div class="threat-level-label" id="threat-label">KRITIS</div>
-        <div class="threat-sublabel" id="threat-sub">RISIKO ESKALASI AKTIF</div>
+  <!-- Left: Telemetry Sidebar -->
+  <aside class="spy-panel spy-left">
+    <div class="spy-panel-title">TELEMETRY DATA</div>
+    
+    <div style="margin-bottom:15px; font-size:12px;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+        <span>ADS-B MIL SIGNAL</span>
+        <span id="sig-adsb-val">95%</span>
       </div>
-      <div class="threat-bars">
-        <div class="tbar" id="tb0"></div>
-        <div class="tbar" id="tb1"></div>
-        <div class="tbar" id="tb2"></div>
-        <div class="tbar" id="tb3"></div>
-        <div class="tbar" id="tb4"></div>
-      </div>
-      <div class="threat-index-row">
-        <span class="tid low">RENDAH</span>
-        <span class="tid med">SEDANG</span>
-        <span class="tid wsp">WASPADA</span>
-        <span class="tid hgh">TINGGI</span>
-        <span class="tid crt">KRITIS</span>
+      <div style="height:6px; background:rgba(0,255,65,0.2); width:100%;">
+        <div id="sig-adsb-bar" style="height:100%; width:95%; background:var(--neon-green);"></div>
       </div>
     </div>
-
-    <!-- I&W Status -->
-    <div class="wv-panel">
-      <div class="wv-panel-title">I&amp;W STATUS</div>
-      <div class="iw-summary-row">
-        <div class="iw-stat triggered">
-          <div class="iw-num" id="iw-triggered">0</div>
-          <div class="iw-lbl">TRIGGERED</div>
-        </div>
-        <div class="iw-stat watch">
-          <div class="iw-num" id="iw-watch">0</div>
-          <div class="iw-lbl">WATCH</div>
-        </div>
-        <div class="iw-stat clear">
-          <div class="iw-num" id="iw-clear">0</div>
-          <div class="iw-lbl">CLEAR</div>
-        </div>
+    
+    <div style="margin-bottom:15px; font-size:12px;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+        <span>AIS MARITIME SIGNAL</span>
+        <span id="sig-ais-val">82%</span>
       </div>
-      <div class="iw-bar-container">
-        <div class="iw-bar-seg triggered" id="iw-bar-t"></div>
-        <div class="iw-bar-seg watch" id="iw-bar-w"></div>
-        <div class="iw-bar-seg clear" id="iw-bar-c"></div>
+      <div style="height:6px; background:rgba(0,255,65,0.2); width:100%;">
+        <div id="sig-ais-bar" style="height:100%; width:82%; background:var(--neon-green);"></div>
       </div>
     </div>
+    
+    <div id="telemetry-feed" style="display:flex; flex-direction:column; gap:5px; margin-top:10px;">
+      <div class="telem-item" style="font-style:italic; opacity:0.5;">WAITING FOR SIGNAL...</div>
+    </div>
+  </aside>
 
-    <!-- Live feed info -->
-    <div class="wv-panel wv-panel-compact">
-      <div class="wv-panel-title">LIVE FEEDS</div>
-      <div class="wv-feed-row">
-        <span class="wv-feed-dot adsb"></span>
-        <span>ADS-B MIL</span>
-        <span class="wv-feed-count" id="live-adsb-count">0</span>
-      </div>
-      <div class="wv-feed-row">
-        <span class="wv-feed-dot ais" id="ais-status-dot"></span>
-        <span>AIS VESSEL</span>
-        <span class="wv-feed-count" id="live-ais-count">0</span>
-      </div>
-      <div class="wv-feed-row">
-        <span class="wv-feed-dot" id="ais-key-dot"></span>
-        <span>AIS KEY</span>
-        <span class="wv-feed-count" id="ais-key-text">UNKNOWN</span>
+  <!-- Center: Map -->
+  <main id="map-container">
+    <div id="satellite-map"></div>
+    <div id="sentinel-sweep-container">
+      <div id="sentinel-sweep-line"></div>
+    </div>
+    <div class="map-noise"></div>
+    <div class="map-crt-overlay"></div>
+  </main>
+
+  <!-- Right: Strategic Briefing Panel -->
+  <aside class="spy-panel spy-right">
+    <div class="spy-panel-title">STRATEGIC BRIEFING</div>
+    <div id="briefing-feed">
+      <div class="briefing-item">
+        <span class="briefing-time">INITIALIZING...</span>
+        CONNECTING TO INTELLIGENCE DATABASE
       </div>
     </div>
   </aside>
 
-  <div class="wv-orbital-mask" aria-hidden="true"></div>
-  <div class="wv-orbital-horizon" aria-hidden="true"></div>
-  <div class="wv-center-tooltip">
-    <div class="wv-center-tooltip-title">LOCATIONS</div>
-    <div class="wv-center-tooltip-main">📍 LOCATION: --</div>
-    <div class="wv-center-tooltip-sub">Landmark: N/A</div>
-  </div>
+  <script src="dom-cache.js"></script>
+  <script src="config.js"></script>
+  <script src="map.js"></script>
+  <script src="asset-tracker.js"></script>
+  <script src="app.js"></script>
 
-  <!-- ===== RIGHT HUD PANELS (Floating) ===== -->
-  <aside class="wv-hud-right">
-    <!-- Signal/Noise -->
-    <div class="wv-panel wv-panel-compact">
-      <div class="wv-panel-title">SIGNAL QUALITY</div>
-      <div class="signal-noise-gauge">
-        <span class="sn-label">S</span>
-        <div class="sn-bar-wrap">
-          <div class="sn-bar-fill" id="sn-bar"></div>
-          <div class="sn-bar-noise" id="sn-noise"></div>
-        </div>
-        <span class="sn-label">N</span>
-        <span class="sn-ratio" id="sn-ratio">72:28</span>
-      </div>
+  <!-- Intel Modal (OMEGA PROTOCOL) -->
+  <div id="intel-modal" class="intel-modal">
+    <div class="digital-rain"></div>
+    <div class="report-header">
+      <div style="font-size:24px; font-weight:bold; letter-spacing:4px; color:var(--neon-green);">⬡ OMEGA PROTOCOL // STRATEGIC SYNTHESIS</div>
+      <div id="report-timestamp" style="opacity:0.7;">SESSION LOG: ACTIVE</div>
     </div>
-
-    <!-- Top 3 Scenarios -->
-    <div class="wv-panel">
-      <div class="wv-panel-title">TOP SKENARIO</div>
-      <div id="top-scenarios-list"></div>
-    </div>
-
-    <!-- Dark Vessel Tracking -->
-    <div class="wv-panel wv-panel-compact">
-      <div class="wv-panel-title">DARK VESSELS</div>
-      <div class="wv-vessel-row">
-        <span class="vessel-count" id="dark-vessel-count">12</span>
-        <span class="vessel-label">ANOMALI TERDETEKSI</span>
-      </div>
-    </div>
-
-    <!-- Controls -->
-    <div class="wv-panel wv-panel-compact">
-      <div class="wv-panel-title">KONTROL</div>
-      <div class="auto-refresh-row">
-        <div class="ar-item">
-          <div class="ar-label">NEXT</div>
-          <div class="ar-value" id="countdown-display">05:00</div>
-        </div>
-      </div>
-      <button class="wv-btn-refresh" id="refresh-btn">↻ REFRESH</button>
-      <button class="wv-btn-export" id="pdf-btn">⬇ PDF</button>
-    </div>
-  </aside>
-
-  <!-- ===== BOTTOM TOOLBAR (Layer Pills) ===== -->
-  <footer class="wv-timeline-wrap">
-    <div class="wv-timeline-speed">
-      <button class="wv-speed-chip">1m/s</button>
-      <button class="wv-speed-chip">3m/s</button>
-      <button class="wv-speed-chip active">15m/s</button>
-      <button class="wv-speed-chip">1h/s</button>
-    </div>
-    <div class="wv-timeline-track">
-      <div class="wv-timeline-cluster red" style="left:11%"></div>
-      <div class="wv-timeline-cluster cyan" style="left:34%"></div>
-      <div class="wv-timeline-cluster orange" style="left:58%"></div>
-      <div class="wv-timeline-cluster pink" style="left:76%"></div>
-      <div class="wv-timeline-playhead" id="timeline-playhead"></div>
-      <div class="wv-timeline-times">
-        <span>00:00:00</span><span>00:15:00</span><span>00:30:00</span><span>00:45:00</span><span>01:00:00</span>
-      </div>
-    </div>
-  </footer>
-
-  <nav class="wv-bottom-toolbar">
-    <div class="wv-pill-group">
-      <button class="wv-pill active" data-color="cyan" data-live-layer="adsb">
-        <span class="wv-pill-dot" style="background:var(--accent-cyan)"></span>
-        AIR (ADS-B) <span class="wv-pill-val" id="toolbar-adsb-count">0</span>
-      </button>
-      <button class="wv-pill active" data-color="green" data-live-layer="ais">
-        <span class="wv-pill-dot connected" id="toolbar-ais-dot"></span>
-        SEA (AIS) <span class="wv-pill-val" id="toolbar-ais-count">0</span>
-      </button>
-      <button class="wv-pill active" data-color="blue" data-layer="naval">
-        NAVAL
-      </button>
-      <button class="wv-pill active" data-color="orange" data-layer="missile">
-        MISSILE
-      </button>
-      <button class="wv-pill active" data-color="purple" data-layer="airbase">
-        AIRBASE
-      </button>
-      <button class="wv-pill active" data-color="red" data-layer="proxy">
-        PROXY
-      </button>
-    </div>
-    <div class="wv-pill-sep"></div>
-    <button class="wv-pill wv-pill-special" id="btn-analysis">
-      ▶ ANALYSIS PANEL
-    </button>
-  </nav>
-
-  <!-- ===== COORDINATE STATUS BAR (Bottom-Left) ===== -->
-  <div class="wv-coord-bar">
-    <span id="wv-coords">34°00'N 048°00'E</span>
-    <span class="wv-sep">│</span>
-    <span>ZOOM: <span id="wv-zoom">4</span></span>
-    <span class="wv-sep">│</span>
-    <span>ESRI SATELLITE</span>
-  </div>
-
-  <!-- ===== ANALYSIS OVERLAY (Hidden by default) ===== -->
-  <div class="wv-analysis-overlay hidden" id="analysis-overlay">
-    <div class="wv-analysis-content">
-      <div class="wv-analysis-header">
-        <span>⬡ ANALISIS MENDALAM</span>
-        <button class="wv-close-btn" id="close-analysis-btn">✕</button>
-      </div>
-
-      <div class="accordion-container">
-
-        <!-- Analyst Summary & Intel Gaps -->
-        <details class="acc-item" id="acc-summary">
-          <summary class="acc-header"><span class="icon-hex">◈</span> RINGKASAN ANALIS & ASSUMPTIONS</summary>
-          <div class="acc-body">
-            <div class="depth-grid-2">
-              <div>
-                <div class="card-title">RINGKASAN ANALIS</div>
-                <div class="analyst-body" id="analyst-summary" style="margin-bottom:10px;">Memuat analisis...</div>
-                <div class="analyst-footer">
-                  <span class="ai-badge">⚡ Multi-Method AI Analysis</span>
-                  <span id="analysis-time">--:--</span>
-                </div>
-              </div>
-              <div>
-                <div class="card-title">KEY ASSUMPTIONS <span class="assumptions-badge"
-                    id="assumptions-violated-count">SEMUA AKTIF</span></div>
-                <div class="assumptions-disclaimer">Toggle OFF = asumsi dilanggar. Probabilitas otomatis direcalkulasi.
-                </div>
-                <div id="assumptions-list"></div>
-
-                <div class="card-title" style="margin-top:15px;">INTELLIGENCE GAPS <span class="gap-summary-badge"
-                    id="gap-summary-badge">7 OPEN · 0 PARTIAL · 0 CLOSED</span></div>
-                <div class="gap-instruction">Klik item untuk siklus status: OPEN → PARTIAL → CLOSED</div>
-                <div id="gap-list"></div>
-              </div>
-            </div>
-          </div>
-        </details>
-
-        <!-- I&W Matrix -->
-        <details class="acc-item" id="acc-iw">
-          <summary class="acc-header"><span class="icon-hex">◈</span> INDICATORS & WARNINGS MATRIX</summary>
-          <div class="acc-body">
-            <div class="iw-legend" style="margin-bottom:10px;">
-              <span class="iw-badge triggered">● TRIGGERED</span>
-              <span class="iw-badge watch">● WATCH</span>
-              <span class="iw-badge clear">● CLEAR</span>
-              <span class="iw-badge unknown">● UNKNOWN</span>
-            </div>
-            <div class="iw-categories" id="iw-table"></div>
-          </div>
-        </details>
-
-        <!-- ACH -->
-        <details class="acc-item" id="acc-ach">
-          <summary class="acc-header"><span class="icon-hex">◈</span> ANALYSIS OF COMPETING HYPOTHESES (ACH)</summary>
-          <div class="acc-body" id="tab-ach">
-            <div class="ach-legend" style="margin-bottom:10px;">
-              <span class="ach-cell-label c">C = Konsisten</span>
-              <span class="ach-cell-label i">I = Inkonsisten</span>
-              <span class="ach-cell-label n">N = N/A</span>
-              <span class="ach-cell-label d">D = Diagnostik</span>
-            </div>
-            <div class="ach-wrapper">
-              <div class="ach-scroll" id="ach-matrix"></div>
-              <div class="ach-scores" id="ach-scores"></div>
-            </div>
-            <div class="ach-conclusion" id="ach-conclusion"></div>
-          </div>
-        </details>
-
-        <!-- Net Assessment -->
-        <details class="acc-item" id="acc-netassess">
-          <summary class="acc-header"><span class="icon-hex">◈</span> NET ASSESSMENT — PERBANDINGAN KAPABILITAS
-          </summary>
-          <div class="acc-body" id="tab-netassess">
-            <div class="netassess-layout">
-              <div class="radar-container">
-                <canvas id="radar-chart"></canvas>
-              </div>
-              <div class="netassess-table" id="netassess-table"></div>
-            </div>
-            <div class="netassess-summary" id="netassess-summary"></div>
-          </div>
-        </details>
-
-        <!-- Scenarios -->
-        <details class="acc-item" id="acc-scenarios">
-          <summary class="acc-header"><span class="icon-hex">◈</span> SEMUA SKENARIO LENGKAP</summary>
-          <div class="acc-body" id="tab-scenarios">
-            <div class="scenario-group">
-              <div class="group-label diplomatik">⬡ KELOMPOK DIPLOMASI</div>
-              <div class="scenario-list" id="group-diplomasi"></div>
-            </div>
-            <div class="scenario-group">
-              <div class="group-label militer">⬡ KELOMPOK MILITER</div>
-              <div class="scenario-list" id="group-militer"></div>
-            </div>
-            <div class="scenario-group">
-              <div class="group-label ekonomi">⬡ KELOMPOK EKONOMI</div>
-              <div class="scenario-list" id="group-ekonomi"></div>
-            </div>
-            <div class="scenario-group">
-              <div class="group-label ekstrem">⬡ RISIKO EKSTREM</div>
-              <div class="scenario-list" id="group-ekstrem"></div>
-            </div>
-          </div>
-        </details>
-
-        <!-- Red Team -->
-        <details class="acc-item" id="acc-redteam">
-          <summary class="acc-header"><span class="icon-hex">◈</span> RED TEAM & WARGAMING</summary>
-          <div class="acc-body" id="tab-redteam">
-            <div class="rt-perspective-nav" style="margin-bottom:10px;">
-              <span class="rt-label">PERSPEKTIF:</span>
-              <button class="pv-btn active" data-perspective="iran">🇮🇷 IRAN</button>
-              <button class="pv-btn" data-perspective="israel">🇮🇱 ISRAEL</button>
-              <button class="pv-btn" data-perspective="us">🇺🇸 AS</button>
-              <button class="pv-btn" data-perspective="china">🇨🇳 CHINA</button>
-            </div>
-            <div class="redteam-layout">
-              <div class="payoff-section">
-                <div class="payoff-title">PAYOFF MATRIX — <span id="pv-label">IRAN vs ISRAEL</span></div>
-                <div id="payoff-matrix"></div>
-                <div class="nash-info" id="nash-info"></div>
-              </div>
-              <div class="wargame-scenarios">
-                <div class="wg-title">SKENARIO WARGAME</div>
-                <div id="wargame-list"></div>
-              </div>
-            </div>
-            <div class="dominant-strategy" id="dominant-strategy"></div>
-          </div>
-        </details>
-
-        <!-- Cone -->
-        <details class="acc-item" id="acc-cone">
-          <summary class="acc-header"><span class="icon-hex">◈</span> CONE OF PLAUSIBILITY</summary>
-          <div class="acc-body" id="tab-cone">
-            <div class="cone-legend" style="margin-bottom:10px;">
-              <span class="cone-lbl worst">WORST CASE</span>
-              <span class="cone-lbl likely">MOST LIKELY</span>
-              <span class="cone-lbl best">BEST CASE</span>
-            </div>
-            <div id="cone-container"></div>
-          </div>
-        </details>
-
-        <!-- SIGINT -->
-        <details class="acc-item" id="acc-sigint">
-          <summary class="acc-header"><span class="icon-hex">◈</span> OSINT/SIGINT DATA FUSION</summary>
-          <div class="acc-body" id="tab-sigint">
-            <div class="fusion-score-wrap" style="margin-bottom:10px;">
-              <span class="fs-label">FUSION SCORE</span>
-              <span class="fs-value" id="fusion-score-val">--</span>
-              <span class="fs-label">/100</span>
-            </div>
-            <div class="sigint-layout">
-              <div class="source-grid" id="source-grid"></div>
-              <div class="sigint-sidebar">
-                <div class="anomaly-panel">
-                  <div class="ap-title">📡 ANOMALY DETECTOR</div>
-                  <div id="anomaly-list"></div>
-                </div>
-                <div class="predictive-panel">
-                  <div class="ap-title">🔮 PREDICTIVE ANALYTICS</div>
-                  <div id="predictive-list"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </details>
-
-        <!-- Logs -->
-        <details class="acc-item" id="acc-logs">
-          <summary class="acc-header"><span class="icon-hex">◈</span> LOGS, DELTA & OSINT FEED</summary>
-          <div class="acc-body">
-            <div class="depth-grid-3">
-              <div>
-                <div class="card-title">KRONOLOGI ESKALASI</div>
-                <div class="chronology-container" id="chronology-container"
-                  style="max-height: 400px; overflow-y: auto;"></div>
-              </div>
-              <div>
-                <div class="card-title">DELTA TRACKER <span class="baseline-tag">vs 2 Mar 2026</span></div>
-                <div id="delta-list" style="margin-bottom: 20px;"></div>
-
-                <div class="card-title">SNAPSHOT HISTORY <span class="snap-count-badge" id="snap-count">0 / 5</span>
-                </div>
-                <button class="btn-snapshot" id="snapshot-btn" style="margin-bottom:8px;width:100%">◉ SIMPAN
-                  SNAPSHOT</button>
-                <div id="snapshot-card-content">
-                  <div id="snapshot-list">
-                    <div class="snap-empty">Belum ada snapshot tersimpan.</div>
-                  </div>
-                </div>
-              </div>
-              <div>
-                <div class="card-title">OSINT FEED — VERIFIED <span class="feed-badge" id="feed-count">8</span></div>
-                <div class="feed-filter-row">
-                  <button class="ff-btn active" data-feed-filter="all">SEMUA</button>
-                  <button class="ff-btn" data-feed-filter="eskalasi">ESK</button>
-                  <button class="ff-btn" data-feed-filter="deeskalasi">DE-ESK</button>
-                </div>
-                <div id="osint-feed" style="max-height: 200px; overflow-y: auto;"></div>
-
-                <div class="card-title" style="margin-top:15px;">PROPAGANDA FILTER <span class="prop-badge"
-                    id="prop-count">0 FLAGS</span></div>
-                <div class="prop-filter-row">
-                  <label class="prop-toggle">
-                    <input type="checkbox" id="high-cred-filter" />
-                    <span>Hanya ≥7 Kredibilitas</span>
-                  </label>
-                </div>
-                <div id="prop-feed" style="max-height: 150px; overflow-y: auto;"></div>
-
-                <div class="card-title unverified-title" style="margin-top:15px; color:#ff8c00;">⚠️ UNVERIFIED /
-                  BOCORAN</div>
-                <button class="uv-toggle" id="uv-toggle-btn" style="margin-bottom:5px;">TAMPILKAN</button>
-                <div id="unverified-feed" class="uv-hidden"></div>
-              </div>
-            </div>
-          </div>
-        </details>
-
-      </div>
+    <div id="report-content" style="font-size:16px; flex:1; margin-top:20px;"></div>
+    <div class="report-actions">
+      <button class="report-btn" id="copy-btn" onclick="copyOmegaReport()">COPY TO SECURE CLIPBOARD</button>
+      <button class="report-btn" onclick="closeOmegaProtocol()">DEACTIVATE PROTOCOL</button>
     </div>
   </div>
 
-  <!-- LOADING OVERLAY -->
-  <div class="loading-overlay hidden" id="loading-overlay">
-    <div class="loading-content">
-      <div class="loading-spinner"></div>
-      <div class="loading-text" id="loading-text">MENGINISIALISASI SISTEM...</div>
-      <div class="loading-steps" id="loading-steps"></div>
-    </div>
+  <!-- Tactical Quick-Action Menu -->
+  <div id="tactical-menu" class="tactical-menu">
+    <div class="tactical-menu-item" onclick="initiateDeepScan()">[ INITIATE DEEP SCAN ]</div>
+    <div class="tactical-menu-item" onclick="toggleTargetLock()">[ LOCK / UNLOCK TARGET ]</div>
+    <div class="tactical-menu-item" onclick="toggleOrbitLock()">[ ORBIT LOCK / UNLOCK ]</div>
+    <div class="tactical-menu-item" onclick="closeTacticalMenu()">[ CANCEL ]</div>
   </div>
 
-  <!-- THE RED PHONE MODAL -->
-  <div class="red-phone-modal hidden" id="red-phone-modal">
-    <div class="rp-box">
-      <div class="rp-header">
-        <span class="rp-icon">☎️</span> THE RED PHONE
-      </div>
-      <div class="rp-content">
-        <div class="rp-flash">CRITICAL ESCALATION DETECTED</div>
-        <div class="rp-message" id="rp-message">Peringatan: Terjadi lonjakan probabilitas >15% pada skenario berisiko
-          tinggi.</div>
-        <button class="rp-ack-btn" id="rp-ack-btn">ACKNOWLEDGE (DISMISS)</button>
-      </div>
-    </div>
+  <!-- Cinematic Indicator -->
+  <div id="cinematic-indicator" style="position:fixed; top:60px; left:50%; transform:translateX(-50%); display:none; z-index:9999; pointer-events:none;">
+    <div class="cinematic-banner">CINEMATIC MODE ACTIVE // ORBITAL LOCK</div>
   </div>
+  
+  <script>
+    // System Health Polling
+    setInterval(async () => {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        const light = document.getElementById('sys-health-light');
+        const txt = document.getElementById('sys-health-text');
+        const sigAisBar = document.getElementById('sig-ais-bar');
+        const sigAisVal = document.getElementById('sig-ais-val');
+        
+        if (data.status === 'online') {
+          if (data.ais_key_active) {
+            light.className = 'health-light active';
+            txt.textContent = 'ONLINE';
+            sigAisBar.style.width = '100%';
+            sigAisBar.style.background = 'var(--neon-green)';
+            sigAisVal.textContent = '100%';
+          } else {
+            light.className = 'health-light error';
+            txt.textContent = 'AIS KEY MISSING';
+            sigAisBar.style.width = '0%';
+            sigAisBar.style.background = 'var(--neon-red)';
+            sigAisVal.textContent = '0%';
+          }
+        }
+      } catch (e) {
+        document.getElementById('sys-health-light').className = 'health-light error';
+        document.getElementById('sys-health-text').textContent = 'CONNECTION LOST';
+        document.getElementById('sig-adsb-bar').style.width = '0%';
+        document.getElementById('sig-adsb-val').textContent = '0%';
+        document.getElementById('sig-ais-bar').style.width = '0%';
+        document.getElementById('sig-ais-val').textContent = '0%';
+      }
+    }, 5000);
 
-  <!-- Scripts — NO defer: execution order matters (app-logic.js depends on app.js) -->
-  <script src="config.js?v=51"></script>
-  <script src="map.js?v=51"></script>
-  <script src="dom-cache.js?v=52"></script>
-  <script src="asset-tracker.js?v=51"></script>
-  <script src="app.js?v=51"></script>
-  <script src="app-logic.js?v=51"></script>
+    // Fetch Briefings
+    setInterval(async () => {
+      try {
+        const res = await fetch('/api/briefings');
+        const data = await res.json();
+        const feed = document.getElementById('briefing-feed');
+        if (data && data.length > 0) {
+          feed.innerHTML = data.slice(0, 10).map(b => `
+            <div class="briefing-item ${b.id ? 'priority' : ''}">
+              <span class="briefing-time">${new Date(b.timestamp).toLocaleTimeString()} - ${b.callsign} [${b.id}]</span>
+              <strong>${b.type}</strong><br>
+              ${b.assessment}
+            </div>
+          `).join('');
+        }
+      } catch (e) {}
+    }, 5000);
+    
+    // --- OMEGA PROTOCOL LOGIC ---
+    let omegaReportText = "";
+    let menuTargetId = null;
+
+    async function triggerOmegaProtocol() {
+      const modal = document.getElementById('intel-modal');
+      const content = document.getElementById('report-content');
+      modal.style.display = 'flex';
+      content.innerHTML = '<div class="typing">INITIALIZING OMEGA SYNTHESIS ENGINE... ACCESSING VOLATILE RAM...</div>';
+
+      try {
+        const res = await fetch('/api/generate-report');
+        const data = await res.json();
+        
+        omegaReportText = `
+${data.title}
+TIMESTAMP: ${new Date(data.timestamp).toLocaleString()}
+SECURITY CLEARANCE: TOP SECRET // OMEGA
+==================================================
+
+[1. SITUATION OVERVIEW]
+${data.overview}
+
+[2. IDENTIFIED THREATS]
+${data.threats}
+
+[3. STRATEGIC RECOMMENDATION]
+${data.recommendation}
+
+==================================================
+CONFIDENTIAL // RAM-ONLY LOG // ZERO FOOTPRINT
+        `.trim();
+
+        typeText(content, omegaReportText);
+      } catch (e) {
+        content.textContent = "ERROR: SYNTHESIS FAILED. VOLATILE BUFFER UNREACHABLE.";
+      }
+    }
+
+    function closeOmegaProtocol() {
+      document.getElementById('intel-modal').style.display = 'none';
+    }
+
+    function copyOmegaReport() {
+      navigator.clipboard.writeText(omegaReportText);
+      const btn = document.getElementById('copy-btn');
+      btn.textContent = "SUCCESS: LOG COPIED";
+      btn.style.color = "#fff";
+      btn.style.background = "var(--neon-green)";
+      setTimeout(() => {
+        btn.textContent = "COPY TO SECURE CLIPBOARD";
+        btn.style.color = "var(--neon-green)";
+        btn.style.background = "transparent";
+      }, 2000);
+    }
+
+    function typeText(element, text) {
+      element.innerHTML = '<pre style="white-space: pre-wrap; margin:0;"></pre>';
+      const pre = element.querySelector('pre');
+      let i = 0;
+      const interval = setInterval(() => {
+        if (i < text.length) {
+          pre.textContent += text.charAt(i);
+          i++;
+          element.scrollTop = element.scrollHeight;
+        } else {
+          clearInterval(interval);
+        }
+      }, 5);
+    }
+
+    // --- TACTICAL MENU LOGIC ---
+    window.openTacticalMenu = function(id, x, y) {
+      menuTargetId = id;
+      const menu = document.getElementById('tactical-menu');
+      menu.style.display = 'flex';
+      menu.style.left = x + 'px';
+      menu.style.top = y + 'px';
+    };
+
+    function closeTacticalMenu() {
+      document.getElementById('tactical-menu').style.display = 'none';
+    }
+
+    function initiateDeepScan() {
+      if (typeof window.triggerDeepScan === 'function') {
+        window.triggerDeepScan(menuTargetId);
+      }
+      closeTacticalMenu();
+    }
+
+    function toggleTargetLock() {
+      if (typeof window.toggleTargetLock === 'function') {
+        window.toggleTargetLock(menuTargetId);
+      }
+      closeTacticalMenu();
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.tactical-menu')) closeTacticalMenu();
+    });
+  </script>
 </body>
-
 </html>
