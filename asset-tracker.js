@@ -15,7 +15,8 @@ const AssetTracker = (() => {
     const ADSB_DIRECT = 'https://api.adsb.lol/v2/mil'; // Fallback direct
     const ADSB_POLL_INTERVAL = 15000; // 15 sec
     const AIS_WS_URL = 'wss://stream.aisstream.io/v0/stream';
-    const MAX_TRAIL_POINTS = 200;
+    const MAX_TRAIL_POINTS = 50;
+    const MAX_LIVE_ASSETS = 200;
     const STALE_THRESHOLD = 300; // 5 min: remove asset if unseen for this long
     const SPOOFING_DISTANCE_KM = 100;
     const SPOOFING_TIME_SEC = 60;
@@ -229,6 +230,7 @@ const AssetTracker = (() => {
             // OPTIMIZATION: Only render dirty assets, not all
             flushDirtyToMap();
             cleanStaleAssets();
+            enforceAssetLimit();
             updateLiveCountBadge();
 
         } catch (err) {
@@ -518,6 +520,7 @@ const AssetTracker = (() => {
         if (!aisRenderTimer) {
             aisRenderTimer = setTimeout(() => {
                 flushDirtyToMap();
+                enforceAssetLimit();
                 updateLiveCountBadge();
                 aisRenderTimer = null;
             }, 500);
@@ -549,6 +552,30 @@ const AssetTracker = (() => {
             if (asset) window.addOrUpdateLiveAsset(asset);
         });
         dirtyAssets.clear();
+    }
+
+
+    function enforceAssetLimit() {
+        const overflow = assetTimestampIndex.size - MAX_LIVE_ASSETS;
+        if (overflow <= 0) return;
+
+        const evictIds = [];
+        for (const [id] of assetTimestampIndex) {
+            evictIds.push(id);
+            if (evictIds.length >= overflow) break;
+        }
+
+        evictIds.forEach(id => {
+            delete liveAssets[id];
+            assetTimestampIndex.delete(id);
+            dirtyAssets.delete(id);
+            if (id.startsWith('ais-')) aisCountCache = Math.max(0, aisCountCache - 1);
+            if (typeof window.removeLiveAsset === 'function') window.removeLiveAsset(id);
+        });
+
+        if (evictIds.length > 0) {
+            console.log(`[Tracker] Evicted ${evictIds.length} oldest assets (max ${MAX_LIVE_ASSETS})`);
+        }
     }
 
     function cleanStaleAssets() {
@@ -609,9 +636,9 @@ const AssetTracker = (() => {
         startAdsbPolling();
         connectAis();
 
-        // Periodic stale cleanup every 60s
+        // Periodic stale cleanup every 30s
         if (staleCleanupTimer) clearInterval(staleCleanupTimer);
-        staleCleanupTimer = setInterval(cleanStaleAssets, 60000);
+        staleCleanupTimer = setInterval(cleanStaleAssets, 30000);
     }
 
     function stop() {
