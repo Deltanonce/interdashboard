@@ -50,7 +50,7 @@ SENTINEL OMEGA is a sophisticated real-time geospatial intelligence platform tha
 ### Installation
 ```bash
 # Clone repository
-git clone <repository-url>
+git clone <https://github.com/Deltanonce/interdashboard/>
 cd sentinel-omega
 
 # Install dependencies
