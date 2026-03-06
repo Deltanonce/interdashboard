@@ -15,7 +15,8 @@ const AssetTracker = (() => {
     const ADSB_DIRECT = 'https://api.adsb.lol/v2/mil'; // Fallback direct
     const ADSB_POLL_INTERVAL = 15000; // 15 sec
     const AIS_WS_URL = 'wss://stream.aisstream.io/v0/stream';
-    const MAX_TRAIL_POINTS = 200;
+    const MAX_TRAIL_POINTS = 50;
+    const MAX_LIVE_ASSETS = 200;
     const STALE_THRESHOLD = 300; // 5 min: remove asset if unseen for this long
     const SPOOFING_DISTANCE_KM = 100;
     const SPOOFING_TIME_SEC = 60;
@@ -229,6 +230,7 @@ const AssetTracker = (() => {
             // OPTIMIZATION: Only render dirty assets, not all
             flushDirtyToMap();
             cleanStaleAssets();
+            enforceAssetLimit();
             updateLiveCountBadge();
 
         } catch (err) {
@@ -266,11 +268,14 @@ const AssetTracker = (() => {
         const apiKey = (typeof window !== 'undefined' && window.AISSTREAM_API_KEY) ? window.AISSTREAM_API_KEY : null;
         const PLACEHOLDER_KEY = 'GANTI_DENGAN_API_KEY_ANDA';
         if (!apiKey || apiKey.length < 10 || apiKey === PLACEHOLDER_KEY) {
+            updateAisKeyStatus('missing');
             console.warn('[AIS] API key browser belum dikonfigurasi. Mencoba mode HTTP relay server (/api/ais-poll)...');
             aisMode = 'http';
             startAisPolling();
             return;
         }
+
+        updateAisKeyStatus('valid');
 
         if (aisMode === 'http' || aisWsFailCount >= AIS_WS_MAX_FAILURES) {
             // Switch to HTTP polling mode
@@ -288,6 +293,7 @@ const AssetTracker = (() => {
             aisSocket = new WebSocket(AIS_WS_URL);
 
             aisSocket.onopen = () => {
+                updateAisKeyStatus('valid');
                 console.log('[AIS] ✅ WebSocket CONNECTED to aisstream.io!');
                 stats.aisConnected = true;
                 aisReconnectDelay = 2000;
@@ -329,6 +335,7 @@ const AssetTracker = (() => {
                 stats.aisConnected = false;
                 aisWsFailCount++;
                 updateAisStatusDot(false);
+                updateAisKeyStatus('error', 'WS');
                 console.warn(`[AIS] ❌ WebSocket CLOSED — code: ${event.code}, reason: "${event.reason || 'none'}", clean: ${event.wasClean}, messages received: ${aisMessageCount}`);
 
                 if (aisWsFailCount >= AIS_WS_MAX_FAILURES) {
@@ -343,6 +350,7 @@ const AssetTracker = (() => {
 
             aisSocket.onerror = (err) => {
                 stats.aisConnected = false;
+                updateAisKeyStatus('error', 'WS');
                 console.error('[AIS] ❌ WebSocket ERROR:', err);
             };
 
@@ -382,6 +390,7 @@ const AssetTracker = (() => {
                 console.log(`[AIS] 🚢 ${data.messages.length} vessel messages received via HTTP relay (poll #${aisPollCount})`);
             }
         } catch (err) {
+            updateAisKeyStatus('error', 'HTTP');
             if (aisPollCount <= 5) {
                 console.warn(`[AIS-HTTP] Poll #${aisPollCount} error: ${err.message}`);
             }
@@ -402,6 +411,30 @@ const AssetTracker = (() => {
         if (dot) {
             dot.classList.toggle('connected', connected);
         }
+    }
+
+    function updateAisKeyStatus(state, detail) {
+        const dot = document.getElementById('ais-key-dot');
+        const text = document.getElementById('ais-key-text');
+        if (dot) dot.classList.remove('connected');
+
+        if (state === 'valid') {
+            if (dot) dot.classList.add('connected');
+            if (text) text.textContent = 'CONFIGURED';
+            return;
+        }
+
+        if (state === 'missing') {
+            if (text) text.textContent = 'NOT SET';
+            return;
+        }
+
+        if (state === 'error') {
+            if (text) text.textContent = detail ? `ERROR (${detail})` : 'ERROR';
+            return;
+        }
+
+        if (text) text.textContent = 'UNKNOWN';
     }
 
     function scheduleAisReconnect() {
@@ -518,6 +551,7 @@ const AssetTracker = (() => {
         if (!aisRenderTimer) {
             aisRenderTimer = setTimeout(() => {
                 flushDirtyToMap();
+                enforceAssetLimit();
                 updateLiveCountBadge();
                 aisRenderTimer = null;
             }, 500);
@@ -549,6 +583,30 @@ const AssetTracker = (() => {
             if (asset) window.addOrUpdateLiveAsset(asset);
         });
         dirtyAssets.clear();
+    }
+
+
+    function enforceAssetLimit() {
+        const overflow = assetTimestampIndex.size - MAX_LIVE_ASSETS;
+        if (overflow <= 0) return;
+
+        const evictIds = [];
+        for (const [id] of assetTimestampIndex) {
+            evictIds.push(id);
+            if (evictIds.length >= overflow) break;
+        }
+
+        evictIds.forEach(id => {
+            delete liveAssets[id];
+            assetTimestampIndex.delete(id);
+            dirtyAssets.delete(id);
+            if (id.startsWith('ais-')) aisCountCache = Math.max(0, aisCountCache - 1);
+            if (typeof window.removeLiveAsset === 'function') window.removeLiveAsset(id);
+        });
+
+        if (evictIds.length > 0) {
+            console.log(`[Tracker] Evicted ${evictIds.length} oldest assets (max ${MAX_LIVE_ASSETS})`);
+        }
     }
 
     function cleanStaleAssets() {
@@ -606,12 +664,13 @@ const AssetTracker = (() => {
         if (isRunning) return;
         isRunning = true;
         console.log('[AssetTracker] ████ INITIALIZING REAL-TIME TELEMETRY ████');
+        updateAisKeyStatus('unknown');
         startAdsbPolling();
         connectAis();
 
-        // Periodic stale cleanup every 60s
+        // Periodic stale cleanup every 30s
         if (staleCleanupTimer) clearInterval(staleCleanupTimer);
-        staleCleanupTimer = setInterval(cleanStaleAssets, 60000);
+        staleCleanupTimer = setInterval(cleanStaleAssets, 30000);
     }
 
     function stop() {

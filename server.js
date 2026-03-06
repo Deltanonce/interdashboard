@@ -3,6 +3,17 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
+let NodeWebSocket = null;
+if (typeof WebSocket !== 'undefined') {
+    NodeWebSocket = WebSocket;
+} else {
+    try {
+        NodeWebSocket = require('ws');
+    } catch (err) {
+        NodeWebSocket = null;
+    }
+}
+
 const PORT = 8888;
 const ROOT = __dirname;
 
@@ -77,17 +88,17 @@ function startAisRelay() {
         return;
     }
 
-    if (typeof WebSocket === 'undefined') {
-        console.warn('[AIS] Relay disabled: global WebSocket is not available in this Node runtime.');
+    if (!NodeWebSocket) {
+        console.warn('[AIS] Relay disabled: WebSocket runtime unavailable. Install dependency: npm install ws');
         return;
     }
 
     const connect = () => {
         try {
-            const ws = new WebSocket(AIS_WS_URL);
+            const ws = new NodeWebSocket(AIS_WS_URL);
             aisState.ws = ws;
 
-            ws.onopen = () => {
+            ws.on('open', () => {
                 aisState.connected = true;
                 aisState.lastError = null;
                 aisState.reconnectDelayMs = 3000;
@@ -97,28 +108,28 @@ function startAisRelay() {
                     FilterMessageTypes: ['PositionReport', 'ShipStaticData']
                 }));
                 console.log('[AIS] Relay connected.');
-            };
+            });
 
-            ws.onmessage = (event) => {
-                const payload = typeof event.data === 'string' ? event.data : String(event.data);
+            ws.on('message', (event) => {
+                const payload = typeof event === 'string' ? event : event.toString();
                 aisState.messages.push(payload);
                 if (aisState.messages.length > MAX_AIS_MESSAGES) {
                     aisState.messages.splice(0, aisState.messages.length - MAX_AIS_MESSAGES);
                 }
                 aisState.lastSeen = new Date().toISOString();
-            };
+            });
 
-            ws.onerror = () => {
+            ws.on('error', () => {
                 aisState.connected = false;
                 aisState.lastError = 'WebSocket error';
-            };
+            });
 
-            ws.onclose = () => {
+            ws.on('close', () => {
                 aisState.connected = false;
                 aisState.ws = null;
                 setTimeout(connect, aisState.reconnectDelayMs);
                 aisState.reconnectDelayMs = Math.min(30000, aisState.reconnectDelayMs * 2);
-            };
+            });
         } catch (err) {
             aisState.connected = false;
             aisState.lastError = err.message;
