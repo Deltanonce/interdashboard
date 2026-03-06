@@ -341,6 +341,10 @@ const AssetTracker = (() => {
 
             aisSocket.onclose = (event) => {
                 stats.aisConnected = false;
+                if (!isRunning) {
+                    updateAisStatusDot(false);
+                    return;
+                }
                 aisWsFailCount++;
                 updateAisStatusDot(false);
                 updateAisKeyStatus('error', 'WS');
@@ -386,6 +390,9 @@ const AssetTracker = (() => {
             if (data.connected) {
                 stats.aisConnected = true;
                 updateAisStatusDot(true);
+            } else {
+                stats.aisConnected = false;
+                updateAisStatusDot(false);
             }
 
             if (data.messages && data.messages.length > 0) {
@@ -407,11 +414,19 @@ const AssetTracker = (() => {
 
     function startAisPolling() {
         if (aisPollTimer) return;
+        if (!isRunning) return;
         pollAisHttp(); // Immediate first poll
         aisPollTimer = setInterval(() => {
             if (isRunning) pollAisHttp();
         }, AIS_POLL_INTERVAL);
         console.log('[AIS] HTTP polling started (every 5s via /api/ais-poll)');
+    }
+
+    function stopAisPolling() {
+        if (aisPollTimer) {
+            clearInterval(aisPollTimer);
+            aisPollTimer = null;
+        }
     }
 
     function updateAisStatusDot(connected) {
@@ -568,6 +583,12 @@ const AssetTracker = (() => {
 
     function disconnectAis() {
         if (aisSocket) {
+            try {
+                aisSocket.onopen = null;
+                aisSocket.onmessage = null;
+                aisSocket.onclose = null;
+                aisSocket.onerror = null;
+            } catch { }
             aisSocket.close();
             aisSocket = null;
         }
@@ -575,7 +596,13 @@ const AssetTracker = (() => {
             clearTimeout(aisReconnectTimer);
             aisReconnectTimer = null;
         }
+        if (aisRenderTimer) {
+            clearTimeout(aisRenderTimer);
+            aisRenderTimer = null;
+        }
+        stopAisPolling();
         stats.aisConnected = false;
+        updateAisStatusDot(false);
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -671,6 +698,8 @@ const AssetTracker = (() => {
     function start() {
         if (isRunning) return;
         isRunning = true;
+        aisMode = 'ws';
+        aisWsFailCount = 0;
         console.log('[AssetTracker] ████ INITIALIZING REAL-TIME TELEMETRY ████');
         updateAisKeyStatus('unknown');
         startAdsbPolling();
@@ -684,6 +713,7 @@ const AssetTracker = (() => {
     function stop() {
         isRunning = false;
         stopAdsbPolling();
+        stopAisPolling();
         disconnectAis();
         if (staleCleanupTimer) {
             clearInterval(staleCleanupTimer);

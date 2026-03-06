@@ -2,6 +2,7 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { URL } = require('url');
 
 let NodeWebSocket = null;
 if (typeof WebSocket !== 'undefined') {
@@ -14,7 +15,8 @@ if (typeof WebSocket !== 'undefined') {
     }
 }
 
-const PORT = 8888;
+const PORT = Number.parseInt(process.env.PORT || '8888', 10);
+const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
 
 const MIME_TYPES = {
@@ -66,9 +68,11 @@ function proxyAdsb(req, res) {
         proxyRes.on('data', chunk => data.push(chunk));
         proxyRes.on('end', () => {
             const body = Buffer.concat(data);
-            res.writeHead(200, {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+            const status = proxyRes.statusCode || 502;
+            res.writeHead(status, {
+                'Content-Type': proxyRes.headers['content-type'] || 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-store'
             });
             res.end(body);
         });
@@ -158,13 +162,36 @@ function pollAis(req, res) {
     res.end(body);
 }
 
+function resolveStaticPath(reqUrl) {
+    const parsed = new URL(reqUrl, `http://localhost:${PORT}`);
+    let requestPath = '/';
+    try {
+        requestPath = decodeURIComponent(parsed.pathname || '/');
+    } catch {
+        return null;
+    }
+    if (requestPath === '/') requestPath = '/index.html';
+
+    const normalized = path.normalize(requestPath).replace(/^(\.\.(\/|\\|$))+/, '');
+    const relative = normalized.replace(/^[/\\]+/, '');
+    const absolute = path.resolve(ROOT, relative);
+    const rootResolved = path.resolve(ROOT) + path.sep;
+    if (!absolute.startsWith(rootResolved)) return null;
+    return absolute;
+}
+
 const server = http.createServer((req, res) => {
     const url = req.url.split('?')[0];
 
     if (url === '/api/adsb-mil') return proxyAdsb(req, res);
     if (url === '/api/ais-poll') return pollAis(req, res);
 
-    const filePath = path.join(ROOT, url === '/' ? 'index.html' : url);
+    const filePath = resolveStaticPath(req.url || '/');
+    if (!filePath) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Invalid path');
+        return;
+    }
     const ext = path.extname(filePath);
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
@@ -181,8 +208,23 @@ const server = http.createServer((req, res) => {
 
 startAisRelay();
 
-server.listen(PORT, () => {
-    console.log(`SERVER_READY on http://localhost:${PORT}/`);
-    console.log(`ADS-B Proxy: http://localhost:${PORT}/api/adsb-mil`);
-    console.log(`AIS Proxy:   http://localhost:${PORT}/api/ais-poll`);
+server.on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE') {
+        console.error(`[SERVER] Port ${PORT} already in use on ${HOST}. Set a different PORT.`);
+        process.exitCode = 1;
+        return;
+    }
+    if (err && (err.code === 'EACCES' || err.code === 'EPERM')) {
+        console.error(`[SERVER] Permission denied binding ${HOST}:${PORT}. Try HOST=127.0.0.1 or a different PORT.`);
+        process.exitCode = 1;
+        return;
+    }
+    console.error('[SERVER] Failed to start:', err);
+    process.exitCode = 1;
+});
+
+server.listen(PORT, HOST, () => {
+    console.log(`SERVER_READY on http://${HOST}:${PORT}/`);
+    console.log(`ADS-B Proxy: http://${HOST}:${PORT}/api/adsb-mil`);
+    console.log(`AIS Proxy:   http://${HOST}:${PORT}/api/ais-poll`);
 });

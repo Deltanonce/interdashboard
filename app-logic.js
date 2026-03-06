@@ -53,6 +53,13 @@ function initPanelStates() {
     });
 }
 
+function toggleAccordionSection(sectionId) {
+    const section = document.getElementById(sectionId);
+    if (!section) return false;
+    section.open = !section.open;
+    return true;
+}
+
 // Timers
 let masterClockTimer = null;
 let liveNewsTimer = null;
@@ -114,15 +121,25 @@ async function runBootSequence() {
             switch (e.key.toUpperCase()) {
                 case 'R': if (!isLoading) triggerRefresh(); break;
                 case 'S': saveSnapshot(); break;
-                case 'A': togglePanel('assumptions-card'); break;
-                case 'G': togglePanel('gap-card'); break;
-                case 'H': togglePanel('snapshot-card'); break;
+                case 'A':
+                    if (!toggleAccordionSection('acc-summary')) togglePanel('assumptions-card');
+                    break;
+                case 'G':
+                    if (!toggleAccordionSection('acc-summary')) togglePanel('gap-card');
+                    break;
+                case 'H':
+                    if (!toggleAccordionSection('acc-logs')) togglePanel('snapshot-card');
+                    break;
                 case 'ESCAPE': acknowledgeRedPhone(); break;
                 default:
                     const n = parseInt(e.key);
                     if (n >= 1 && n <= 9) {
-                        const tabs = document.querySelectorAll('.tab-btn');
-                        if (tabs[n - 1]) tabs[n - 1].click();
+                        const sections = document.querySelectorAll('.acc-item');
+                        const target = sections[n - 1];
+                        if (target) {
+                            target.open = true;
+                            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
                     }
             }
         });
