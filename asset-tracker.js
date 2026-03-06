@@ -7,7 +7,11 @@ const AssetTracker = (() => {
     'use strict';
 
     // ── CONFIGURATION ──────────────────────────────────────────────────
-    const ADSB_PROXY = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL.replace(/\/api$/, '') + '/api/adsb-mil' : '/api/adsb-mil'; // Proxied via proxy-server.ps1
+    // Endpoint strategy: only read from window.CONFIG.API_BASE_URL, otherwise use same-origin /api fallback.
+    const API_BASE_URL = (typeof window !== 'undefined' && window.CONFIG && window.CONFIG.API_BASE_URL)
+        ? window.CONFIG.API_BASE_URL
+        : '/api';
+    const ADSB_PROXY = API_BASE_URL.replace(/\/api$/, '') + '/api/adsb-mil'; // Proxied via server.js
     const ADSB_DIRECT = 'https://api.adsb.lol/v2/mil'; // Fallback direct
     const ADSB_POLL_INTERVAL = 15000; // 15 sec
     const AIS_WS_URL = 'wss://stream.aisstream.io/v0/stream';
@@ -252,14 +256,14 @@ const AssetTracker = (() => {
 
     let aisWsFailCount = 0;
     const AIS_WS_MAX_FAILURES = 4;
-    const AIS_POLL_ENDPOINT = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL.replace(/\/api$/, '') + '/api/ais-poll' : '/api/ais-poll';
+    const AIS_POLL_ENDPOINT = API_BASE_URL.replace(/\/api$/, '') + '/api/ais-poll';
     const AIS_POLL_INTERVAL = 5000; // 5 seconds for faster updates
     let aisPollTimer = null;
     let aisMode = 'ws'; // Try direct WebSocket first, then fallback to HTTP relay
     let aisMessageCount = 0;
 
     function connectAis() {
-        const apiKey = (typeof AISSTREAM_API_KEY !== 'undefined' && AISSTREAM_API_KEY) ? AISSTREAM_API_KEY : null;
+        const apiKey = (typeof window !== 'undefined' && window.AISSTREAM_API_KEY) ? window.AISSTREAM_API_KEY : null;
         const PLACEHOLDER_KEY = 'GANTI_DENGAN_API_KEY_ANDA';
         if (!apiKey || apiKey.length < 10 || apiKey === PLACEHOLDER_KEY) {
             console.warn('[AIS] API key browser belum dikonfigurasi. Mencoba mode HTTP relay server (/api/ais-poll)...');
