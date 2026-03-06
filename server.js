@@ -114,7 +114,7 @@ function startAisRelay() {
                 const payload = typeof event === 'string' ? event : event.toString();
                 aisState.messages.push(payload);
                 if (aisState.messages.length > MAX_AIS_MESSAGES) {
-                    aisState.messages.splice(0, aisState.messages.length - MAX_AIS_MESSAGES);
+                    aisState.messages = aisState.messages.slice(-MAX_AIS_MESSAGES);
                 }
                 aisState.lastSeen = new Date().toISOString();
             });

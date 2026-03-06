@@ -624,9 +624,15 @@ function renderGapPanel() {
     const el = document.getElementById('gap-list');
     if (!el || typeof INTEL_GAPS === 'undefined') return;
 
-    const openCount = INTEL_GAPS.filter(g => g.status === 'OPEN').length;
-    const partialCount = INTEL_GAPS.filter(g => g.status === 'PARTIAL').length;
-    const closedCount = INTEL_GAPS.filter(g => g.status === 'CLOSED').length;
+    const { openCount, partialCount, closedCount } = INTEL_GAPS.reduce(
+        (acc, g) => {
+            if (g.status === 'OPEN') acc.openCount++;
+            else if (g.status === 'PARTIAL') acc.partialCount++;
+            else if (g.status === 'CLOSED') acc.closedCount++;
+            return acc;
+        },
+        { openCount: 0, partialCount: 0, closedCount: 0 }
+    );
 
     const badge = document.getElementById('gap-summary-badge');
     if (badge) {
@@ -687,6 +693,10 @@ const TCFG = [
 ];
 const BCLS = ['active-low', 'active-med', 'active-wsp', 'active-hgh', 'active-crt'];
 
+// Cached references to static threat-bar and threat-indicator elements (populated on first render)
+let _tbCache = null;
+let _tidCache = null;
+
 function renderThreat() {
     if (currentThreatLevel < 0 || currentThreatLevel >= TCFG.length) return;
     const c = TCFG[currentThreatLevel];
@@ -696,12 +706,19 @@ function renderThreat() {
     const sub = document.getElementById('threat-sub');
     if (sub) sub.textContent = c.sub;
 
+    if (!_tbCache) _tbCache = [0, 1, 2, 3, 4].map(i => document.getElementById(`tb${i}`));
     for (let i = 0; i < 5; i++) {
-        const b = document.getElementById(`tb${i}`);
+        const b = _tbCache[i];
         if (b) { b.className = 'tbar'; if (i < c.bCount) b.classList.add(BCLS[i]); }
     }
-    document.querySelectorAll('.tid').forEach((el, i) => { if (el) el.style.opacity = i === currentThreatLevel ? '1' : '0.35'; });
+
+    if (!_tidCache) _tidCache = Array.from(document.querySelectorAll('.tid'));
+    _tidCache.forEach((el, i) => { if (el) el.style.opacity = i === currentThreatLevel ? '1' : '0.35'; });
 }
+
+// Shared lookup tables used inside computeDST — defined once to avoid recreation per call.
+const _DST_SCENARIO_GROUP_MAP = { militer: ['S4','S5','S6','S7'], nuklir: ['S3','S11','S12'], ekonomi: ['S8','S9'], diplomatik: ['S1','S2','S10'] };
+const _DST_GROUP_TO_CAT = { militer: 'MILITER', nuklir: 'INTELIJEN', ekonomi: 'EKONOMI', diplomatik: 'DIPLOMATIK' };
 
 function computeDST(scenario) {
     const p = scenario.current;
@@ -722,17 +739,17 @@ function computeDST(scenario) {
         beliefFactor += (corrobRatio - 0.5) * 0.20;
     } catch (e) { }
 
+    // Resolve the scenario group once; reuse for both beliefFactor and plausFactor.
+    let scenGroup = null;
+    for (const [g, ids] of Object.entries(_DST_SCENARIO_GROUP_MAP)) { if (ids.includes(scenario.id)) { scenGroup = g; break; } }
+    const catName = scenGroup ? _DST_GROUP_TO_CAT[scenGroup] : null;
+
+    // Count triggered IW indicators for the category once, shared by both factor calculations.
+    let triggeredCount = 0;
     try {
-        const groupMap = { militer: ['S4','S5','S6','S7'], nuklir: ['S3','S11','S12'], ekonomi: ['S8','S9'], diplomatik: ['S1','S2','S10'] };
-        let scenGroup = null;
-        for (const [g, ids] of Object.entries(groupMap)) { if (ids.includes(scenario.id)) { scenGroup = g; break; } }
-        if (scenGroup && typeof IW_INDICATORS !== 'undefined' && Array.isArray(IW_INDICATORS)) {
-            const groupToCat = { militer: 'MILITER', nuklir: 'INTELIJEN', ekonomi: 'EKONOMI', diplomatik: 'DIPLOMATIK' };
-            const catName = groupToCat[scenGroup];
-            if (catName) {
-                const triggered = IW_INDICATORS.filter(iw => iw.cat === catName && iw.status === 'triggered').length;
-                beliefFactor += triggered * 0.04;
-            }
+        if (catName && typeof IW_INDICATORS !== 'undefined' && Array.isArray(IW_INDICATORS)) {
+            triggeredCount = IW_INDICATORS.reduce((n, iw) => n + (iw.cat === catName && iw.status === 'triggered' ? 1 : 0), 0);
+            beliefFactor += triggeredCount * 0.04;
         }
     } catch (e) { }
 
@@ -746,16 +763,8 @@ function computeDST(scenario) {
 
     let plausFactor = 1.30;
     try {
-        const groupMap2 = { militer: ['S4','S5','S6','S7'], nuklir: ['S3','S11','S12'], ekonomi: ['S8','S9'], diplomatik: ['S1','S2','S10'] };
-        let sg = null;
-        for (const [g, ids] of Object.entries(groupMap2)) { if (ids.includes(scenario.id)) { sg = g; break; } }
-        if (sg && typeof IW_INDICATORS !== 'undefined' && Array.isArray(IW_INDICATORS)) {
-            const groupToCat2 = { militer: 'MILITER', nuklir: 'INTELIJEN', ekonomi: 'EKONOMI', diplomatik: 'DIPLOMATIK' };
-            const catName2 = groupToCat2[sg];
-            if (catName2) {
-                const triggeredCount = IW_INDICATORS.filter(iw => iw.cat === catName2 && iw.status === 'triggered').length;
-                plausFactor -= triggeredCount * 0.05;
-            }
+        if (catName && triggeredCount > 0) {
+            plausFactor -= triggeredCount * 0.05;
         }
     } catch (e) { }
     plausFactor += violations * 0.08;
@@ -1090,9 +1099,15 @@ function renderIWCounts() {
     const tot = IW_INDICATORS.length;
     if (tot === 0) return;
 
-    const t = IW_INDICATORS.filter(i => i.status === 'triggered').length;
-    const w = IW_INDICATORS.filter(i => i.status === 'watch').length;
-    const cl = IW_INDICATORS.filter(i => i.status === 'clear').length;
+    const { t, w, cl } = IW_INDICATORS.reduce(
+        (acc, i) => {
+            if (i.status === 'triggered') acc.t++;
+            else if (i.status === 'watch') acc.w++;
+            else if (i.status === 'clear') acc.cl++;
+            return acc;
+        },
+        { t: 0, w: 0, cl: 0 }
+    );
 
     const setT = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
     const setW = (id, pct) => { const e = document.getElementById(id); if (e) e.style.width = pct + '%'; };
