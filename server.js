@@ -3,6 +3,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
+const filterAdsbFlight = require('./adsb-filter');
 
 let NodeWebSocket = null;
 if (typeof WebSocket !== 'undefined') {
@@ -69,12 +70,37 @@ function proxyAdsb(req, res) {
         proxyRes.on('end', () => {
             const body = Buffer.concat(data);
             const status = proxyRes.statusCode || 502;
+            let responseBody = body;
+            let contentType = proxyRes.headers['content-type'] || 'application/json';
+
+            if (status >= 200 && status < 300) {
+                try {
+                    const payload = JSON.parse(body.toString('utf8'));
+                    if (Array.isArray(payload.ac)) {
+                        payload.ac = payload.ac.filter(filterAdsbFlight);
+                    }
+                    if (Array.isArray(payload.aircraft)) {
+                        payload.aircraft = payload.aircraft.filter(filterAdsbFlight);
+                    }
+                    responseBody = Buffer.from(JSON.stringify(payload));
+                    contentType = 'application/json';
+                } catch (err) {
+                    res.writeHead(502, {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Cache-Control': 'no-store'
+                    });
+                    res.end(JSON.stringify({ error: 'Invalid ADS-B payload from upstream' }));
+                    return;
+                }
+            }
+
             res.writeHead(status, {
-                'Content-Type': proxyRes.headers['content-type'] || 'application/json',
+                'Content-Type': contentType,
                 'Access-Control-Allow-Origin': '*',
                 'Cache-Control': 'no-store'
             });
-            res.end(body);
+            res.end(responseBody);
         });
     });
 
