@@ -4524,12 +4524,12 @@ body {
   }
 
 }
-/* ============================================================
+/* ------------------------------------------------------------
    INTEL DASHBOARD — STYLE PATCH
    Append this block to the END of style.css
    Fixes: missing .wv-pill-val, .wv-analysis-content, AIS dot,
           accordion-container, and various UI polish issues.
-   ============================================================ */
+   ------------------------------------------------------------ */
 
 /* FIX: .wv-pill-val was referenced in HTML but had no CSS rule
    (CSS only had .wv-pill-count which was never used in HTML) */
