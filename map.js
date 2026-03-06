@@ -341,13 +341,69 @@ window.toggleLayer = function (cat, el) {
 let liveAdsbLayer = null;
 let liveAisLayer = null;
 let liveMarkerRefs = {}; // id → { marker, glow, trailSegments[], lastHeading, lastTrailLen, source }
+let activeTrajectory = null; // { assetId, polyline }
+
+function getTrajectoryPoints(asset) {
+    if (!asset) return [];
+    const points = [];
+    const pushPoint = (lat, lon) => {
+        if (lat == null || lon == null) return;
+        const candidate = [lat, lon];
+        const last = points[points.length - 1];
+        if (!last || Math.abs(last[0] - candidate[0]) > 0.00001 || Math.abs(last[1] - candidate[1]) > 0.00001) {
+            points.push(candidate);
+        }
+    };
+
+    if (Array.isArray(asset.history)) {
+        asset.history.forEach(p => {
+            if (Array.isArray(p) && p.length >= 2) pushPoint(p[0], p[1]);
+        });
+    } else if (Array.isArray(asset.trail)) {
+        asset.trail.forEach(p => {
+            if (Array.isArray(p) && p.length >= 2) pushPoint(p[0], p[1]);
+        });
+    }
+
+    pushPoint(asset.lat, asset.lon);
+    return points;
+}
+
+function renderPersistentTrajectory(asset) {
+    if (!leafletMap || !asset) return;
+    const points = getTrajectoryPoints(asset);
+    if (points.length < 2) return;
+
+    if (activeTrajectory && activeTrajectory.polyline) {
+        activeTrajectory.polyline.remove();
+        activeTrajectory = null;
+    }
+
+    const polyline = L.polyline(points, {
+        color: '#00d4ff',
+        weight: 2.2,
+        opacity: 0.9
+    }).addTo(leafletMap);
+
+    activeTrajectory = {
+        assetId: asset.id,
+        polyline
+    };
+}
+
+function updatePersistentTrajectoryIfSelected(asset) {
+    if (!activeTrajectory || !activeTrajectory.polyline || !asset || activeTrajectory.assetId !== asset.id) return;
+    const points = getTrajectoryPoints(asset);
+    if (points.length < 2) return;
+    activeTrajectory.polyline.setLatLngs(points);
+}
 
 function animateMarkerMotion(ref, toLatLng) {
     if (!ref || !ref.marker) return;
 
     const from = ref.marker.getLatLng();
     const to = L.latLng(toLatLng[0], toLatLng[1]);
-    const duration = 900;
+    const duration = 3000;
     const startTs = performance.now();
 
     if (ref.motionRaf) {
@@ -387,16 +443,23 @@ function ensureLiveLayers() {
     }
 }
 
-// Build tooltip with spoofing badge + aircraft type
+// Build tooltip with explicit identity fields
 function buildLiveTooltip(asset) {
     const confColor = asset.confidence >= 90 ? '#2ed573' : asset.confidence >= 70 ? '#ffa502' : '#ff4757';
     const altDisplay = asset.altitude < 0 ? `${asset.altitude}ft (SUB)` : asset.altitude === 0 ? 'SFC' : `FL${Math.round(asset.altitude / 100)}`;
     const spoofBadge = asset.spoofing ? '<div class="spoofing-badge">⚠ SPOOFING</div>' : '';
     const srcBadge = asset._source === 'adsb' ? '📡 ADS-B' : '🚢 AIS';
-    const acType = asset.aircraftType ? ` [${asset.aircraftType}]` : '';
+    const callsign = asset.callsign || 'UNKNOWN';
+    const identityType = asset.aircraftType || asset.vesselTypeName || asset.type || 'UNKNOWN';
+    const identityHex = asset.hex || 'N/A';
     return `<div class="asset-hud-tooltip">
         ${spoofBadge}
-        <div class="aht-callsign" style="color:${asset.color}">${asset.callsign}${acType}</div>
+        <div class="aht-callsign" style="color:${asset.color}">${callsign}</div>
+        <div class="aht-grid">
+            <span class="aht-label">CALLSIGN</span><span class="aht-value">${callsign}</span>
+            <span class="aht-label">TYPE</span><span class="aht-value">${identityType}</span>
+            <span class="aht-label">HEX</span><span class="aht-value">${identityHex}</span>
+        </div>
         <div class="aht-grid">
             <span class="aht-label">SPD</span><span class="aht-value">${asset.speed} kts</span>
             <span class="aht-label">ALT</span><span class="aht-value">${altDisplay}</span>
@@ -416,6 +479,7 @@ window.addOrUpdateLiveAsset = function (asset) {
     const existing = liveMarkerRefs[asset.id];
 
     if (existing) {
+        existing.latestAsset = asset;
         // Update position with smooth interpolation
         animateMarkerMotion(existing, [asset.lat, asset.lon]);
 
@@ -457,6 +521,8 @@ window.addOrUpdateLiveAsset = function (asset) {
             existing.lastTrailLen = currentTrailLen;
         }
 
+        updatePersistentTrajectoryIfSelected(asset);
+
     } else {
         // Create new marker — clean, no glow (FlightRadar style)
         const marker = L.marker([asset.lat, asset.lon], {
@@ -480,6 +546,11 @@ window.addOrUpdateLiveAsset = function (asset) {
                 ref._pendingTooltip = null;
             }
         });
+        marker.on('click', () => {
+            const ref = liveMarkerRefs[asset.id];
+            const selectedAsset = ref && ref.latestAsset ? ref.latestAsset : asset;
+            renderPersistentTrajectory(selectedAsset);
+        });
 
         liveMarkerRefs[asset.id] = {
             marker,
@@ -489,7 +560,8 @@ window.addOrUpdateLiveAsset = function (asset) {
             lastTrailLen: 0,
             source: asset._source,
             motionRaf: null,
-            _pendingTooltip: null
+            _pendingTooltip: null,
+            latestAsset: asset
         };
     }
 };
@@ -508,6 +580,10 @@ window.removeLiveAsset = function (id) {
         ref.trailSegments.forEach(seg => {
             if (seg) seg.remove();
         });
+    }
+    if (activeTrajectory && activeTrajectory.assetId === id) {
+        if (activeTrajectory.polyline) activeTrajectory.polyline.remove();
+        activeTrajectory = null;
     }
     delete liveMarkerRefs[id];
 };

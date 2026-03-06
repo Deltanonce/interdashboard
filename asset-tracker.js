@@ -16,10 +16,17 @@ const AssetTracker = (() => {
     const ADSB_POLL_INTERVAL = 15000; // 15 sec
     const AIS_WS_URL = 'wss://stream.aisstream.io/v0/stream';
     const MAX_TRAIL_POINTS = 50;
+    const MAX_HISTORY_POINTS = 2000;
     const MAX_LIVE_ASSETS = 200;
     const STALE_THRESHOLD = 300; // 5 min: remove asset if unseen for this long
     const SPOOFING_DISTANCE_KM = 100;
     const SPOOFING_TIME_SEC = 60;
+    const MIDDLE_EAST_BOUNDS = {
+        latMin: 10,
+        latMax: 43,
+        lonMin: 20,
+        lonMax: 66
+    };
 
     // Bounding boxes for AIS: [[latMin, lonMin], [latMax, lonMax]]
     // Expanded to cover busiest maritime chokepoints
@@ -135,6 +142,32 @@ const AssetTracker = (() => {
         }
     }
 
+    function updateHistory(asset, newLat, newLon) {
+        if (!asset.history) asset.history = [];
+        if (asset.history.length === 0) {
+            asset.history.push([newLat, newLon]);
+            return;
+        }
+
+        const last = asset.history[asset.history.length - 1];
+        const dist = haversineKm(last[0], last[1], newLat, newLon);
+        if (dist < 0.01) return;
+
+        asset.history.push([newLat, newLon]);
+
+        while (asset.history.length > MAX_HISTORY_POINTS) {
+            // Keep first seen origin point in index 0.
+            asset.history.splice(1, 1);
+        }
+    }
+
+    function isInsideMiddleEast(lat, lon) {
+        return lat >= MIDDLE_EAST_BOUNDS.latMin &&
+            lat <= MIDDLE_EAST_BOUNDS.latMax &&
+            lon >= MIDDLE_EAST_BOUNDS.lonMin &&
+            lon <= MIDDLE_EAST_BOUNDS.lonMax;
+    }
+
     // ══════════════════════════════════════════════════════════════════
     //  ADS-B TRACKER (HTTP Polling — ADSB.lol Military)
     // ══════════════════════════════════════════════════════════════════
@@ -164,6 +197,17 @@ const AssetTracker = (() => {
 
                 const id = `adsb-${ac.hex}`;
                 const prevAsset = liveAssets[id] || null;
+                const inMiddleEast = isInsideMiddleEast(ac.lat, ac.lon);
+
+                if (!inMiddleEast) {
+                    if (prevAsset) {
+                        delete liveAssets[id];
+                        assetTimestampIndex.delete(id);
+                        dirtyAssets.delete(id);
+                        if (typeof window.removeLiveAsset === 'function') window.removeLiveAsset(id);
+                    }
+                    return;
+                }
 
                 // OPTIMIZATION: Reuse existing object, only update changed fields
                 if (prevAsset) {
@@ -174,6 +218,7 @@ const AssetTracker = (() => {
                     prevAsset.speed = Math.round(ac.gs || 0);
                     prevAsset.heading = Math.round(ac.track || ac.nav_heading || 0);
                     prevAsset.callsign = (ac.flight || ac.r || ac.hex || 'UNKN').trim().toUpperCase();
+                    prevAsset.hex = (ac.hex || prevAsset.hex || '').toUpperCase();
                     prevAsset._seenSec = ac.seen || 0;
                     prevAsset._timestamp = now;
                     assetTimestampIndex.delete(id);
@@ -192,6 +237,7 @@ const AssetTracker = (() => {
 
                     // Trail: only add if actually moved
                     updateTrail(prevAsset, ac.lat, ac.lon, prevAsset.altitude);
+                    updateHistory(prevAsset, ac.lat, ac.lon);
 
                     // Confidence
                     const cs = computeConfidence(prevAsset, { lat: oldLat, lon: oldLon, _timestamp: prevAsset._timestamp - 15000 });
@@ -212,16 +258,18 @@ const AssetTracker = (() => {
                         altitude: ac.alt_baro || ac.alt_geom || 0,
                         speed: Math.round(ac.gs || 0),
                         heading: Math.round(ac.track || ac.nav_heading || 0),
+                        hex: (ac.hex || '').toUpperCase(),
                         source: ac.type || 'unknown',
                         _seenSec: ac.seen || 0, _timestamp: now,
                         squawk: ac.squawk || '', aircraftType: ac.t || '', registration: ac.r || '',
                         moving: true, cat: 'airbase',
                         color: ((ac.mlat && ac.mlat.length > 0) || ac.type === 'mlat') ? '#ffa502' : '#00d4ff',
-                        trail: [], trailAlt: [], confidence: 50, spoofing: false,
+                        trail: [], trailAlt: [], history: [], confidence: 50, spoofing: false,
                         _live: true, _source: 'adsb'
                     };
                     if (ac.emergency && ac.emergency !== 'none') normalized.color = '#ff4757';
                     updateTrail(normalized, ac.lat, ac.lon, normalized.altitude);
+                    updateHistory(normalized, ac.lat, ac.lon);
                     const cs = computeConfidence(normalized, null);
                     normalized.confidence = cs.confidence;
                     liveAssets[id] = normalized;
@@ -238,6 +286,7 @@ const AssetTracker = (() => {
             // OPTIMIZATION: Only render dirty assets, not all
             flushDirtyToMap();
             cleanStaleAssets();
+            purgeOutOfBoundsAircraft();
             enforceAssetLimit();
             updateLiveCountBadge();
 
@@ -529,6 +578,7 @@ const AssetTracker = (() => {
                 color: '#2ed573', // Green for vessels
                 trail: prevAsset ? [...(prevAsset.trail || [])] : [],
                 trailAlt: prevAsset ? [...(prevAsset.trailAlt || [])] : [],
+                history: prevAsset ? [...(prevAsset.history || [])] : [],
                 confidence: 50,
                 spoofing: false,
                 _live: true,
@@ -539,6 +589,7 @@ const AssetTracker = (() => {
 
             // Trail update
             updateTrail(normalized, lat, lon, 0);
+            updateHistory(normalized, lat, lon);
 
             // Confidence
             const { confidence, spoofing } = computeConfidence(normalized, prevAsset);
@@ -671,6 +722,28 @@ const AssetTracker = (() => {
         console.log(`[Tracker] Cleaned ${staleIds.length} stale assets`);
     }
 
+    function purgeOutOfBoundsAircraft() {
+        const idsToRemove = [];
+        Object.keys(liveAssets).forEach(id => {
+            const asset = liveAssets[id];
+            if (!asset || asset._source !== 'adsb') return;
+            if (asset.lat == null || asset.lon == null || !isInsideMiddleEast(asset.lat, asset.lon)) {
+                idsToRemove.push(id);
+            }
+        });
+
+        if (idsToRemove.length === 0) return;
+
+        idsToRemove.forEach(id => {
+            delete liveAssets[id];
+            assetTimestampIndex.delete(id);
+            dirtyAssets.delete(id);
+            if (typeof window.removeLiveAsset === 'function') window.removeLiveAsset(id);
+        });
+
+        console.log(`[Tracker] Purged ${idsToRemove.length} out-of-bounds ADS-B aircraft`);
+    }
+
     function updateLiveCountBadge() {
         // HUD (Left Panel)
         const adsbBadge = getEl('live-adsb-count');
@@ -707,7 +780,10 @@ const AssetTracker = (() => {
 
         // Periodic stale cleanup every 30s
         if (staleCleanupTimer) clearInterval(staleCleanupTimer);
-        staleCleanupTimer = setInterval(cleanStaleAssets, 30000);
+        staleCleanupTimer = setInterval(() => {
+            cleanStaleAssets();
+            purgeOutOfBoundsAircraft();
+        }, 30000);
     }
 
     function stop() {
