@@ -139,8 +139,8 @@ MIT License - see [LICENSE](LICENSE) file
 
 ## 📞 Contact
 
-**Developer:** [Your Name]
-**Email:** [Your Email]
+**Developer:** Oktavian Triantoko
+**Email:** otriantoko@gmail.com
 **Institution:** Universitas Sriwijaya, English Education
 
 ---
