@@ -610,7 +610,7 @@ const server = http.createServer((req, res) => {
                 const duration = Date.now() - start;
                 HealthMonitor.recordRequest(res.statusCode < 400);
                 if (process.env.NODE_ENV !== 'test') {
-                    console.log(`[\${new Date().toISOString()}] \${req.method} \${req.url} - \${res.statusCode} (\${duration}ms)`);
+                    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
                 }
             });
 
@@ -709,6 +709,25 @@ const server = http.createServer((req, res) => {
                 }
                 res.writeHead(200, { 'Content-Type': 'text/markdown', 'Access-Control-Allow-Origin': '*' });
                 fs.createReadStream(filepath).pipe(res);
+                return;
+            }
+
+            // Serve config.js dynamically to inject server-side environment variables.
+            // Note: CESIUM_ACCESS_TOKEN is intentionally exposed to the browser — CesiumJS
+            // requires it client-side to access Cesium Ion resources. Ensure the token has
+            // read-only / tile-access scope and appropriate domain restrictions on ion.cesium.com.
+            if (url === '/config.js') {
+                const cesiumToken = process.env.CESIUM_ACCESS_TOKEN || '';
+                const configContent = [
+                    `window.CESIUM_ACCESS_TOKEN = ${JSON.stringify(cesiumToken)};`,
+                    `window.CONFIG = { API_BASE_URL: '/api' };`
+                ].join('\n') + '\n';
+                res.writeHead(200, {
+                    'Content-Type': 'application/javascript',
+                    'Cache-Control': 'no-store',
+                    'X-Content-Type-Options': 'nosniff'
+                });
+                res.end(configContent);
                 return;
             }
 
