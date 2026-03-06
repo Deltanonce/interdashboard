@@ -127,7 +127,12 @@ async function runBootSequence() {
     } catch (e) { }
 
     try { initMap(); } catch (e) { }
-    try { if (typeof AssetTracker !== 'undefined') AssetTracker.start(); } catch (e) { }
+    try {
+        await waitForMapBridgeReady(4000);
+        if (typeof AssetTracker !== 'undefined') AssetTracker.start();
+    } catch (e) {
+        console.warn('[BOOT] Asset tracker delayed: map bridge not ready yet.');
+    }
     try { initRadarChart(); } catch (e) { }
     try { computeIW(); renderIW(); } catch (e) { }
     try { renderACH(); } catch (e) { }
@@ -196,6 +201,16 @@ async function runBootSequence() {
     try { startLiveNewsEngine(); } catch (e) { }
 
     simulateRefresh(true).catch(e => { hideLoadingOverlay(); });
+}
+
+async function waitForMapBridgeReady(timeoutMs = 4000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const mapContainer = document.getElementById('satellite-map');
+        if (mapContainer && typeof window.addOrUpdateLiveAsset === 'function') return;
+        await sleep(100);
+    }
+    throw new Error('map-bridge-timeout');
 }
 
 function hideLoadingOverlay() {
