@@ -8,7 +8,7 @@
 
 ## Reporting a Vulnerability
 
-Please report security vulnerabilities to: [your-email]
+Please report security vulnerabilities to: otriantoko@gmail.com
 
 **Do NOT** open public issues for security vulnerabilities.
 
