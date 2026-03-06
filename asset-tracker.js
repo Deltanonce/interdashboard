@@ -422,8 +422,8 @@ const AssetTracker = (() => {
     }
 
     function updateAisKeyStatus(state, detail) {
-        const dot = getEl('ais-key-dot');
-        const text = getEl('ais-key-text');
+        const dot = document.getElementById('ais-key-dot');
+        const text = document.getElementById('ais-key-text');
         if (dot) dot.classList.remove('connected');
 
         if (state === 'valid') {
