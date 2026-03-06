@@ -668,7 +668,8 @@ const server = http.createServer((req, res) => {
                 return;
             }
 
-            // ── BRIEFING ENDPOINTS ──            if (url === '/api/generate-briefing' && req.method === 'POST') {
+            // ── BRIEFING ENDPOINTS ──
+            if (url === '/api/generate-briefing' && req.method === 'POST') {
                 briefingScheduler.generateBriefing()
                     .then(result => {
                         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
