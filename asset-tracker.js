@@ -47,6 +47,14 @@ const AssetTracker = (() => {
     let staleCleanupTimer = null;
     let stats = { adsbCount: 0, aisCount: 0, lastAdsbPoll: null, aisConnected: false, spoofAlerts: 0 };
 
+
+    function getEl(id) {
+        if (typeof window !== 'undefined' && window.DOMCache && typeof window.DOMCache.get === 'function') {
+            return window.DOMCache.get(id);
+        }
+        return document.getElementById(id);
+    }
+
     // ── UTILITY: Haversine Distance (km) ───────────────────────────────
     function haversineKm(lat1, lon1, lat2, lon2) {
         const R = 6371;
@@ -407,7 +415,7 @@ const AssetTracker = (() => {
     }
 
     function updateAisStatusDot(connected) {
-        const dot = document.getElementById('ais-status-dot');
+        const dot = getEl('ais-status-dot');
         if (dot) {
             dot.classList.toggle('connected', connected);
         }
@@ -638,20 +646,20 @@ const AssetTracker = (() => {
 
     function updateLiveCountBadge() {
         // HUD (Left Panel)
-        const adsbBadge = document.getElementById('live-adsb-count');
-        const aisBadge = document.getElementById('live-ais-count');
+        const adsbBadge = getEl('live-adsb-count');
+        const aisBadge = getEl('live-ais-count');
         if (adsbBadge) adsbBadge.textContent = stats.adsbCount;
         if (aisBadge) aisBadge.textContent = stats.aisCount;
 
         // BOTTOM TOOLBAR
-        const adsbToolbar = document.getElementById('toolbar-adsb-count');
-        const aisToolbar = document.getElementById('toolbar-ais-count');
+        const adsbToolbar = getEl('toolbar-adsb-count');
+        const aisToolbar = getEl('toolbar-ais-count');
         if (adsbToolbar) adsbToolbar.textContent = stats.adsbCount;
         if (aisToolbar) aisToolbar.textContent = stats.aisCount;
 
         // AIS connection indicator (Update both)
         ['ais-status-dot', 'toolbar-ais-dot'].forEach(id => {
-            const el = document.getElementById(id);
+            const el = getEl(id);
             if (el) el.classList.toggle('connected', stats.aisConnected);
         });
     }
