@@ -3,7 +3,59 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
+const { validateEnv } = require('./scripts/validate-env');
+
+// Validate environment on startup
+try {
+    require('dotenv').config();
+} catch (e) {}
+validateEnv();
+
 const filterAdsbFlight = require('./adsb-filter');
+const { sendPriorityTargetAlert, sendADIZAlert } = require('./telegram-alerts');
+const { checkADIZEntry } = require('./adiz-zones');
+const BriefingScheduler = require('./briefing-scheduler');
+const HealthMonitor = require('./health-monitor');
+const helmet = require('helmet');
+const cors = require('cors');
+const RateLimiter = require('./security/rate-limiter');
+const SecretsManager = require('./security/secrets-manager');
+const InputValidator = require('./security/input-validator');
+
+// Initialize security components
+const rateLimiter = new RateLimiter({ maxRequests: 150 });
+const corsHandler = cors({
+    origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:8888'],
+    methods: ['GET', 'POST'],
+    credentials: true,
+    maxAge: 86400
+});
+
+const helmetHandler = helmet({
+    contentSecurityPolicy: {
+        directives: {
+            ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+            "script-src": ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://cesium.com"],
+            "img-src": ["'self'", "data:", "https:", "blob:"],
+            "connect-src": ["'self'", "https://api.adsb.lol", "wss://stream.aisstream.io", "https://celestrak.org", "https://services.arcgisonline.com"]
+        }
+    }
+});
+
+function requireAPIKey(req, res, next) {
+    const apiKey = req.headers['x-api-key'];
+    if (!apiKey) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'API key required' }));
+        return;
+    }
+    if (!SecretsManager.validateAPIKey('client', apiKey)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid API key' }));
+        return;
+    }
+    next();
+}
 
 let NodeWebSocket = null;
 if (typeof WebSocket !== 'undefined') {
@@ -61,6 +113,10 @@ const priorityTargets = ['K35R', 'R135', 'P8', 'C17', 'B52'];
 const briefingSessions = new Set(); 
 const intelligenceBuffer = new Map(); // RAM-only buffer for OMEGA PROTOCOL
 
+// Initialize Briefing Scheduler
+const briefingScheduler = new BriefingScheduler(intelligenceBuffer);
+briefingScheduler.start();
+
 function updateIntelligenceBuffer(ac) {
     if (!ac.hex) return;
     if (!intelligenceBuffer.has(ac.hex)) {
@@ -115,12 +171,50 @@ function logBriefing(ac) {
     };
 
     updateIntelligenceBuffer(ac);
+    HealthMonitor.recordBriefing();
 
     const logEntry = JSON.stringify(briefing) + '\n';
     fs.appendFile(path.join(ROOT, 'briefings.log'), logEntry, (err) => {
         if (err) console.error('[BRIEFING] Failed to save log:', err);
     });
     console.log(`[BRIEFING] Strategic Alert: ${briefing.callsign} (${briefing.type})`);
+
+    // ── TELEGRAM STRATEGIC ALERTS ──
+    if (ac.priority) {
+        sendPriorityTargetAlert({
+            id: ac.hex,
+            callsign: ac.callsign || 'N/A',
+            aircraftType: ac.t || 'N/A',
+            hex: ac.hex,
+            lat: ac.lat,
+            lon: ac.lon,
+            altitude: ac.alt_baro || ac.alt || 0,
+            speed: ac.gs || ac.speed || 0,
+            heading: ac.track || ac.heading || 0,
+            squawk: ac.squawk
+        }).then(() => HealthMonitor.recordAlert(true))
+          .catch(err => {
+            HealthMonitor.recordAlert(false);
+            console.error('[TELEGRAM] Priority alert failed:', err.message);
+          });
+
+        // ADIZ Incursion Monitoring
+        const zones = checkADIZEntry({ lat: ac.lat, lon: ac.lon });
+        for (const zone of zones) {
+            sendADIZAlert({
+                id: ac.hex,
+                callsign: ac.callsign || 'N/A',
+                aircraftType: ac.t || 'N/A',
+                hex: ac.hex,
+                lat: ac.lat,
+                lon: ac.lon
+            }, zone.name).then(() => HealthMonitor.recordAlert(true))
+              .catch(err => {
+                HealthMonitor.recordAlert(false);
+                console.error('[TELEGRAM] ADIZ alert failed:', err.message);
+              });
+        }
+    }
 }
 
 function handleProximityAlert(req, res) {
@@ -236,6 +330,7 @@ function proxyAdsb(req, res) {
             setImmediate(() => {
                 try {
                     const payload = JSON.parse(body.toString('utf8'));
+                    HealthMonitor.recordAdsbPoll(true);
                     const rawList = payload.ac || payload.aircraft || [];
                     const rawCount = rawList.length;
 
@@ -248,6 +343,8 @@ function proxyAdsb(req, res) {
 
                     const filteredList = payload.ac || payload.aircraft || [];
                     const filteredCount = filteredList.length;
+                    
+                    HealthMonitor.updateAssetCount(filteredCount);
 
                     // Priority Target Detection
                     filteredList.forEach(ac => {
@@ -283,6 +380,7 @@ function proxyAdsb(req, res) {
                     });
                     res.end(responseBody);
                 } catch (err) {
+                    HealthMonitor.recordAdsbPoll(false);
                     res.writeHead(502, {
                         'Content-Type': 'application/json',
                         'Access-Control-Allow-Origin': '*'
@@ -294,12 +392,14 @@ function proxyAdsb(req, res) {
     });
 
     proxyReq.on('timeout', () => {
+        HealthMonitor.recordAdsbPoll(false);
         proxyReq.destroy();
         res.writeHead(504, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Gateway Timeout', message: 'Upstream ADS-B request timed out' }));
     });
 
     proxyReq.on('error', (err) => {
+        HealthMonitor.recordAdsbPoll(false);
         res.writeHead(502, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ error: 'Proxy error', message: err.message }));
     });
@@ -325,6 +425,7 @@ function startAisRelay() {
 
             ws.on('open', () => {
                 aisState.connected = true;
+                HealthMonitor.setAisConnected(true);
                 aisState.lastError = null;
                 aisState.reconnectDelayMs = 3000;
                 ws.send(JSON.stringify({
@@ -336,6 +437,7 @@ function startAisRelay() {
             });
 
             ws.on('message', (event) => {
+                HealthMonitor.recordAisMessage();
                 const payload = typeof event === 'string' ? event : event.toString();
                 aisState.messages.push(payload);
                 if (aisState.messages.length > MAX_AIS_MESSAGES) {
@@ -346,6 +448,7 @@ function startAisRelay() {
 
             ws.on('error', () => {
                 aisState.connected = false;
+                HealthMonitor.setAisConnected(false);
                 aisState.lastError = 'WebSocket error';
             });
 
@@ -422,6 +525,58 @@ function getStatus(req, res) {
     res.end(body);
 }
 
+// Health Check Endpoint
+function getHealth(req, res) {
+    const health = HealthMonitor.getHealth();
+    res.writeHead(health.status === 'healthy' ? 200 : 503, { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+    });
+    res.end(JSON.stringify(health));
+}
+
+// Performance Metrics Endpoint
+function getMetrics(req, res) {
+    res.writeHead(200, { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+    });
+    res.end(JSON.stringify(HealthMonitor.getMetrics()));
+}
+
+// System Information Endpoint
+function getInfo(req, res) {
+    res.writeHead(200, { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+    });
+    res.end(JSON.stringify(HealthMonitor.getSystemInfo()));
+}
+
+// API Documentation Endpoint
+function getDocs(req, res) {
+    const docs = {
+        title: 'SENTINEL OMEGA API',
+        version: '1.0.0',
+        description: 'Real-time geospatial intelligence dashboard API',
+        endpoints: [
+            { path: '/api/health', method: 'GET', description: 'System health check' },
+            { path: '/api/metrics', method: 'GET', description: 'Real-time operational metrics' },
+            { path: '/api/info', method: 'GET', description: 'Process and system information' },
+            { path: '/api/status', method: 'GET', description: 'UI connectivity status' },
+            { path: '/api/adsb-mil', method: 'GET', description: 'ADS-B military proxy' },
+            { path: '/api/ais-poll', method: 'GET', description: 'AIS maritime telemetry relay' },
+            { path: '/api/briefings-list', method: 'GET', description: 'List historical strategic reports' },
+            { path: '/api/generate-briefing', method: 'POST', description: 'Manual briefing trigger' }
+        ]
+    };
+    res.writeHead(200, { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+    });
+    res.end(JSON.stringify(docs));
+}
+
 function getBriefings(req, res) {
     const logPath = path.join(ROOT, 'briefings.log');
     fs.readFile(logPath, 'utf8', (err, data) => {
@@ -444,32 +599,137 @@ function getBriefings(req, res) {
 }
 
 const server = http.createServer((req, res) => {
-    const url = req.url.split('?')[0];
+    // ── SECURITY HARDENING ──
+    
+    // Apply CORS
+    corsHandler(req, res, () => {
+        // Apply Helmet security headers
+        helmetHandler(req, res, () => {
+            const start = Date.now();
+            res.on('finish', () => {
+                const duration = Date.now() - start;
+                HealthMonitor.recordRequest(res.statusCode < 400);
+                if (process.env.NODE_ENV !== 'test') {
+                    console.log(`[\${new Date().toISOString()}] \${req.method} \${req.url} - \${res.statusCode} (\${duration}ms)`);
+                }
+            });
 
-    if (url === '/api/adsb-mil') return proxyAdsb(req, res);
-    if (url === '/api/ais-poll') return pollAis(req, res);
-    if (url === '/api/status') return getStatus(req, res);
-    if (url === '/api/briefings') return getBriefings(req, res);
-    if (url === '/api/generate-report') return generateReport(req, res);
-    if (url === '/api/proximity-alert') return handleProximityAlert(req, res);
+            const url = req.url.split('?')[0];
+            if (url.startsWith('/api/')) {
+                const limitErr = rateLimiter.checkLimit(req);
+                if (limitErr) {
+                    res.writeHead(limitErr.status, { 
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*' 
+                    });
+                    res.end(JSON.stringify({ error: limitErr.message, retryAfter: limitErr.retryAfter }));
+                    return;
+                }
+            }
 
-    const filePath = resolveStaticPath(req.url || '/');
-    if (!filePath) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.end('Invalid path');
-        return;
-    }
-    const ext = path.extname(filePath);
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+            if (url === '/api/adsb-mil') return proxyAdsb(req, res);
+            if (url === '/api/ais-poll') return pollAis(req, res);
+            if (url === '/api/status') return getStatus(req, res);
+            if (url === '/api/health') return getHealth(req, res);
+            if (url === '/api/metrics') return getMetrics(req, res);
+            if (url === '/api/info') return getInfo(req, res);
+            if (url === '/api/docs') return getDocs(req, res);
+            if (url === '/api/briefings') return getBriefings(req, res);
+            if (url === '/api/generate-report') return generateReport(req, res);
+            if (url === '/api/proximity-alert') return handleProximityAlert(req, res);
 
-    fs.readFile(filePath, (err, data) => {
-        if (err) {
-            res.writeHead(404, { 'Content-Type': 'text/plain' });
-            res.end('Not found: ' + filePath);
-            return;
-        }
-        res.writeHead(200, { 'Content-Type': contentType });
-        res.end(data);
+            // ── SECURITY EXAMPLES ──
+            if (url === '/api/admin/rotate-keys' && req.method === 'POST') {
+                return requireAPIKey(req, res, () => {
+                    try {
+                        const result = SecretsManager.rotateAPIKey('client');
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ message: 'Keys rotated', info: result }));
+                    } catch (e) {
+                        res.writeHead(500); res.end(e.message);
+                    }
+                });
+            }
+
+            if (url === '/api/validate-target' && req.method === 'POST') {
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', () => {
+                    try {
+                        const data = JSON.parse(body);
+                        const sanitized = InputValidator.sanitizeFlightData(data);
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ valid: true, sanitized }));
+                    } catch (e) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ valid: false, error: e.message }));
+                    }
+                });
+                return;
+            }
+
+            // ── BRIEFING ENDPOINTS ──            if (url === '/api/generate-briefing' && req.method === 'POST') {
+                briefingScheduler.generateBriefing()
+                    .then(result => {
+                        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                        res.end(JSON.stringify(result));
+                    })
+                    .catch(err => {
+                        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                        res.end(JSON.stringify({ success: false, error: err.message }));
+                    });
+                return;
+            }
+
+            if (url === '/api/briefing/stats') {
+                res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                res.end(JSON.stringify(briefingScheduler.getStats()));
+                return;
+            }
+
+            if (url === '/api/briefings-list') {
+                const dir = path.join(ROOT, 'briefings');
+                if (!fs.existsSync(dir)) {
+                    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                    res.end(JSON.stringify({ files: [] }));
+                    return;
+                }
+                const files = fs.readdirSync(dir).filter(f => f.startsWith('briefing_')).sort().reverse();
+                res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                res.end(JSON.stringify({ count: files.length, files }));
+                return;
+            }
+
+            if (url.startsWith('/api/briefing/download/')) {
+                const filename = url.split('/').pop();
+                const filepath = path.join(ROOT, 'briefings', filename);
+                if (!fs.existsSync(filepath) || !filename.startsWith('briefing_')) {
+                    res.writeHead(404); res.end('Not found'); return;
+                }
+                res.writeHead(200, { 'Content-Type': 'text/markdown', 'Access-Control-Allow-Origin': '*' });
+                fs.createReadStream(filepath).pipe(res);
+                return;
+            }
+
+            const filePath = resolveStaticPath(req.url || '/');
+            if (!filePath) {
+                res.writeHead(400, { 'Content-Type': 'text/plain' });
+                res.end('Invalid path');
+                return;
+            }
+            const ext = path.extname(filePath);
+            const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+
+            fs.readFile(filePath, (err, data) => {
+                if (err) {
+                    res.writeHead(404, { 'Content-Type': 'text/plain' });
+                    res.end('Not found: ' + filePath);
+                    return;
+                }
+                res.writeHead(200, { 'Content-Type': contentType });
+                res.end(data);
+            });
+        });
     });
 });
 

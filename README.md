@@ -1,58 +1,148 @@
-# Intel Dashboard
+# 🛰️ SENTINEL OMEGA
 
-Real-time strategic dashboard with live ADS-B military aircraft and AIS maritime overlays.
+**Real-Time Geospatial Intelligence Dashboard**
 
-## Run
+[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/status-Production-success.svg)]()
 
-### Node server (recommended)
+## 📋 Overview
 
+SENTINEL OMEGA is a sophisticated real-time geospatial intelligence platform that combines military aircraft tracking (ADS-B), maritime vessel monitoring (AIS), and satellite constellation tracking into a unified 3D visualization dashboard powered by CesiumJS.
+
+### Key Features
+
+- 🛩️ **Multi-Source Intelligence**
+  - ADS-B Military Aircraft Tracking
+  - AIS Maritime Vessel Monitoring
+  - Multi-Constellation Satellite Tracking
+
+- 🌍 **3D Visualization**
+  - CesiumJS-powered globe rendering
+  - Real-time position updates
+  - Predictive intercept path calculation
+  - Cinematic camera controls
+
+- 🎯 **Intelligence Analysis**
+  - Automatic target classification
+  - Spoofing detection via confidence scoring
+  - ADIZ boundary monitoring
+  - Threat level assessment
+
+- 📊 **Automated Reporting**
+  - Daily strategic briefings (20:00 WIB)
+  - Telegram alert integration
+  - OMEGA Protocol: RAM-only intelligence buffer
+
+- 🔒 **Security & Reliability**
+  - Input validation & sanitization
+  - Rate limiting
+  - API key management
+  - Health monitoring
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js 18+
+- npm or yarn
+- Valid API keys (Cesium, AIS Stream)
+
+### Installation
 ```bash
+# Clone repository
+git clone <repository-url>
+cd sentinel-omega
+
+# Install dependencies
 npm install
-npm start
+
+# Setup environment
+cp .env.example .env
+nano .env  # Add your API keys
+
+# Validate configuration
+npm run validate
+
+# Start development server
+npm run dev
 ```
 
-Server starts on `http://localhost:8888` and provides:
-- `GET /api/adsb-mil`
-- `GET /api/ais-poll`
+Visit `http://localhost:8888`
 
-## AIS Live Vessel Tracking
+## 📖 Documentation
 
-AIS can run in two modes:
+- [User Guide](docs/USER_GUIDE.md) - Dashboard operation manual
+- [Developer Guide](docs/DEVELOPER_GUIDE.md) - Architecture & maintenance
+- [API Documentation](docs/API.md) - Endpoint reference
+- [Deployment Guide](docs/DEPLOYMENT.md) - Production setup
+- [Thesis Integration](docs/THESIS_INTEGRATION.md) - AI Literacy Case Studies
 
-- **Browser direct WebSocket**: dashboard connects directly to AIS stream when a valid key is configured.
-- **Node relay**: `server.js` relays AIS via WebSocket and serves it through `/api/ais-poll`.
+## 🏗️ Architecture
+```
+sentinel-omega/
+├── asset-tracker/        # Modular tracking system
+│   ├── index.js         # Main entry point
+│   ├── adsb-handler.js  # ADS-B data processing
+│   ├── ais-handler.js   # AIS data processing
+│   ├── confidence-engine.js
+│   └── trail-manager.js
+├── security/            # Security modules
+├── tests/              # Test suites
+├── briefings/          # Generated reports
+├── map.js             # Cesium visualization
+├── server.js          # Express server
+└── index.html         # Frontend UI
+```
 
-### Setup
-
-1. Get API key from https://aisstream.io/
-2. Configure key in browser config (where `window.AISSTREAM_API_KEY` is defined).
-3. For Node relay mode, set env var:
-
+## 🧪 Testing
 ```bash
-export AISSTREAM_API_KEY='your-key-here'
+# Run all tests
+npm test
+
+# Run with coverage
+npm run test:coverage
+
+# Watch mode
+npm run test:watch
 ```
 
-4. Ensure `ws` dependency is installed (`npm install`).
+## 🔐 Security
 
-### Server mode notes
+See [SECURITY.md](SECURITY.md) for security policies and best practices.
 
-- **Node (`server.js`)**:
-  - Uses global `WebSocket` if available, else `ws` package.
-  - If WebSocket runtime is unavailable, relay is disabled with a clear warning.
-- **PowerShell (`proxy-server.ps1`)**:
-  - Runs in **HTTP-only mode**.
-  - Does **not** provide server-side AIS WebSocket relay.
-  - `/api/ais-poll` returns an informational error payload in this mode.
+## 📊 Performance
 
+- **Real-time Updates**: 15-second ADS-B polling
+- **Asset Limit**: 200 concurrent live assets
+- **Memory Efficient**: DOM caching + trail optimization
+- **Uptime**: 99.9% target (health monitoring)
 
-## Performance Optimizations
+## 🎓 Academic Context
 
-### DOM Caching
-The dashboard caches frequently accessed DOM elements on startup to reduce query overhead:
+This project was developed as part of a thesis on **AI Literacy in Non-Technical Domains** at Universitas Sriwijaya, demonstrating how AI tools (Gemini CLI) can empower non-technical students to build production-grade applications.
 
-- Hot paths cached: clock updates, live counters, status indicators.
-- Impact: ~85% reduction in DOM queries (about 50-80/sec to 5-10/sec).
-- CPU savings: roughly 30-40% lower idle CPU usage.
+**Key Contributions:**
+- Prompt engineering methodology
+- AI-assisted debugging workflows
+- Multimodal learning integration
 
-If you modify HTML structure, the cache re-queries elements on next access.
+## 📝 License
 
+MIT License - see [LICENSE](LICENSE) file
+
+## 🙏 Acknowledgments
+
+- Data Sources: ADS-B Exchange, AIS Stream
+- Technologies: CesiumJS, Node.js, Express
+- AI Assistance: Google Gemini CLI
+- Institution: Universitas Sriwijaya
+
+## 📞 Contact
+
+**Developer:** [Your Name]
+**Email:** [Your Email]
+**Institution:** Universitas Sriwijaya, English Education
+
+---
+
+*Built with ❤️ for the advancement of AI literacy in education*

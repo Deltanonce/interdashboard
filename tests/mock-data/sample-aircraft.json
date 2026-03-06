@@ -1,0 +1,49 @@
+{
+  "normal_flight": {
+    "hex": "ABC123",
+    "callsign": "UAL123",
+    "lat": 1.3521,
+    "lon": 103.8198,
+    "altitude": 35000,
+    "speed": 450,
+    "heading": 90,
+    "squawk": "2134",
+    "t": "B738"
+  },
+  
+  "priority_target": {
+    "hex": "AE123F",
+    "callsign": "RCH123",
+    "lat": 1.3521,
+    "lon": 103.8198,
+    "altitude": 28000,
+    "speed": 420,
+    "heading": 180,
+    "squawk": "4321",
+    "t": "KC-135"
+  },
+  
+  "invalid_altitude": {
+    "hex": "XYZ789",
+    "callsign": "TST999",
+    "lat": 1.3521,
+    "lon": 103.8198,
+    "altitude": 75000,
+    "speed": 450,
+    "heading": 90,
+    "squawk": "1234",
+    "t": "A320"
+  },
+  
+  "emergency": {
+    "hex": "EMG001",
+    "callsign": "EMG01",
+    "lat": 1.3521,
+    "lon": 103.8198,
+    "altitude": 10000,
+    "speed": 250,
+    "heading": 270,
+    "squawk": "7700",
+    "t": "B737"
+  }
+}

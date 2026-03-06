@@ -1,7 +1,12 @@
 // map.js - OMEGA RESTORE: 3D Geospatial Engine (CesiumJS)
+import SatelliteTracker, { SATELLITE_CATEGORIES } from './asset-tracker/satellite-tracker.js';
 
 let viewer = null;
+let leafletMap = null; // 2D Fallback
+let is3DMode = true;
+
 let liveMarkerRefs = {}; // id -> { entity, latestAsset, source }
+let predictionEntities = {}; // id -> { pathEntity, endpointEntity }
 let satelliteEntities = {}; // satId -> entity
 let alertedAssetIds = new Set();
 let lockedAssetIds = new Set();
@@ -18,8 +23,36 @@ const scanSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/25
 // TLE Data URL (CelesTrak - Active Satellites)
 const TLE_URL = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle';
 
+function detectCapabilities() {
+    try {
+        const canvas = document.createElement('canvas');
+        return {
+            webgl: !!(window.WebGLRenderingContext && (canvas.getContext('webgl') || canvas.getContext('experimental-webgl'))),
+            webgl2: !!(window.WebGL2RenderingContext && canvas.getContext('webgl2'))
+        };
+    } catch (e) {
+        return { webgl: false, webgl2: false };
+    }
+}
+
 async function initMap() {
+    const caps = detectCapabilities();
+    if (!caps.webgl) {
+        window.Logger.log('MAP', 'WebGL not supported. Switching to 2D Fallback Mode.');
+        return showFallbackMode();
+    }
+
+    try {
+        await initCesium();
+    } catch (err) {
+        window.Logger.log('CESIUM', 'Failed to initialize Cesium 3D Engine.', err);
+        showFallbackMode();
+    }
+}
+
+async function initCesium() {
     if (viewer) return;
+    is3DMode = true;
 
     // Initialize Cesium Viewer with disabled default UI for tactical look
     Cesium.Ion.defaultAccessToken = window.CESIUM_ACCESS_TOKEN || ''; 
@@ -50,7 +83,7 @@ async function initMap() {
         const buildingTileset = await Cesium.createOsmBuildingsAsync();
         viewer.scene.primitives.add(buildingTileset);
     } catch (e) {
-        console.warn('3D Tiles failed to load:', e);
+        console.warn('3D Buildings failed to load:', e);
     }
 
     // Dark Satellite Aesthetic: Lower saturation, boost contrast, slight blue tint via color-matrix
@@ -73,6 +106,10 @@ async function initMap() {
     checkSignalJammingZones();
     setupSentinelSweep();
 
+    // --- Satellite Tracker Initialization ---
+    await SatelliteTracker.loadAllSatellites();
+    setupSatelliteUI();
+
     // Sync UI pills
     setInterval(() => {
         const adsbVal = document.getElementById('live-adsb-count');
@@ -82,6 +119,47 @@ async function initMap() {
         if (adsbVal && toolbarAdsb) toolbarAdsb.textContent = adsbVal.textContent;
         if (aisVal && toolbarAis) toolbarAis.textContent = aisVal.textContent;
     }, 2000);
+}
+
+function showFallbackMode() {
+    is3DMode = false;
+    const container = document.getElementById('satellite-map');
+    if (!container) return;
+
+    // Clean up container
+    container.innerHTML = '';
+    container.style.filter = 'none';
+
+    // Load Leaflet CSS dynamically if not present
+    if (!document.querySelector('link[href*="leaflet.css"]')) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css';
+        document.head.appendChild(link);
+    }
+
+    // Load Leaflet JS dynamically if not present
+    if (typeof L === 'undefined') {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js';
+        script.onload = () => initLeaflet();
+        document.head.appendChild(script);
+    } else {
+        initLeaflet();
+    }
+}
+
+function initLeaflet() {
+    leafletMap = L.map('satellite-map', {
+        zoomControl: false,
+        attributionControl: false
+    }).setView([25.0, 45.0], 4);
+
+    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19
+    }).addTo(leafletMap);
+
+    window.Logger.showToast('2D Fallback Mode Active', 'info');
 }
 
 // --- Sentinel Sweep Post Process ---
@@ -153,6 +231,10 @@ function setupSentinelSweep() {
 }
 
 window.toggleOrbitLock = function(id) {
+    if (!is3DMode) {
+        window.Logger.showToast('Cinematic Orbit requires 3D Mode', 'warn');
+        return;
+    }
     if (cinematicOrbitActive) {
         stopOrbit();
     } else {
@@ -178,7 +260,7 @@ function startCinematicOrbit(id) {
 function stopOrbit() {
     cinematicOrbitActive = false;
     orbitTarget = null;
-    viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+    if (viewer) viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
     
     if (motionBlurStage) motionBlurStage.enabled = false;
     const indicator = document.getElementById('cinematic-indicator');
@@ -292,14 +374,45 @@ window.addOrUpdateLiveAsset = function (asset) {
         window.onPriorityDetected(asset);
     }
 
+    if (window.SHOW_PREDICTIONS && (asset.priority || lockedAssetIds.has(asset.id))) {
+        renderPredictionPath(asset);
+    }
+
     const altitude = asset.altitude > 0 ? asset.altitude * 0.3048 : 0; // ft to meters
     const position = Cesium.Cartesian3.fromDegrees(asset.lon, asset.lat, altitude);
-    const color = asset._source === 'adsb' ? Cesium.Color.RED : Cesium.Color.LIME;
+    
+    // ── DYNAMIC COLORING BASED ON VALIDATION ──
+    let color = asset._source === 'adsb' ? Cesium.Color.RED : Cesium.Color.LIME;
+    let labelSuffix = '';
+
+    if (asset._source === 'ais' && asset.classification) {
+        color = Cesium.Color.fromCssColorString(asset.classification.color);
+        labelSuffix = ` ${asset.classification.icon}`;
+        if (asset.classification.finalThreatLevel === 'high' || asset.classification.finalThreatLevel === 'critical') {
+            labelSuffix += ` [${asset.classification.finalThreatLevel.toUpperCase()}]`;
+        }
+    }
+
+    if (asset.validation) {
+        if (!asset.validation.valid) {
+            color = Cesium.Color.fromCssColorString('#ffb000'); // Amber for anomaly
+            labelSuffix += ' [ANOMALY]';
+        } else if (asset.validation.warnings && asset.validation.warnings.length > 0) {
+            color = Cesium.Color.RED; // Force Red for emergency squawks
+            labelSuffix += ` [${asset.validation.warnings[0].meaning}]`;
+        }
+    }
 
     if (liveMarkerRefs[asset.id]) {
         const ref = liveMarkerRefs[asset.id];
         ref.latestAsset = asset;
         ref.entity.position = position;
+        
+        // Update color and label
+        if (ref.entity.cylinder) ref.entity.cylinder.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.6));
+        if (ref.entity.box) ref.entity.box.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.6));
+        if (ref.entity.billboard) ref.entity.billboard.image = createSvgDataUri(asset._source, asset.classification?.color || (asset._source === 'adsb' ? '#ff4757' : '#2ed573'));
+        if (ref.entity.label) ref.entity.label.text = (asset.callsign || asset.hex || 'UNK') + labelSuffix;
         
         // Update orientation if heading available
         if (asset.heading) {
@@ -367,9 +480,8 @@ window.syncLiveAssets = function (activeIds) {
     });
 };
 
-function createSvgDataUri(source) {
+function createSvgDataUri(source, color) {
     // Generate simple SVG URI for billboards
-    const color = source === 'adsb' ? '#ff4757' : '#2ed573';
     const svg = `<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
         <circle cx="16" cy="16" r="10" fill="${color}" fill-opacity="0.6" stroke="${color}" stroke-width="2"/>
         <line x1="16" y1="0" x2="16" y2="32" stroke="${color}" stroke-width="1"/>
@@ -464,6 +576,7 @@ function checkSignalJammingZones() {
 
 function startRenderLoop() {
     viewer.scene.postRender.addEventListener(function () {
+        if (window.PerfMonitor) window.PerfMonitor.recordFrame();
         if (orbitalViewActive && followedEntity) {
             // Apply slight rotation or zoom adjustments for cinematic effect
         }
@@ -580,4 +693,108 @@ function updateTelemetrySidebar(asset) {
     el.innerHTML = `<strong>[${asset.hex || 'SYS'}]</strong> ${asset.callsign || 'UNK'} : LAT ${asset.lat.toFixed(2)} LON ${asset.lon.toFixed(2)} SPD ${asset.speed} ALT ${asset.altitude}`;
     feed.prepend(el);
     while (feed.children.length > 20) feed.lastElementChild.remove();
+}
+
+// --- PREDICTION PATH RENDERING ---
+function renderPredictionPath(asset) {
+    if (!viewer || !window.SHOW_PREDICTIONS) return;
+
+    if (predictionEntities[asset.id]) {
+        viewer.entities.remove(predictionEntities[asset.id].pathEntity);
+        if (predictionEntities[asset.id].endpointEntity) {
+            viewer.entities.remove(predictionEntities[asset.id].endpointEntity);
+        }
+        delete predictionEntities[asset.id];
+    }
+
+    if (typeof AssetTracker === 'undefined' || !AssetTracker.calculateInterceptPath) return;
+
+    const predictions = AssetTracker.calculateInterceptPath(asset, 15);
+    if (!predictions || predictions.length < 2) return;
+
+    const positions = predictions.map(p => 
+        Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.altitude * 0.3048)
+    );
+
+    const pathEntity = viewer.entities.add({
+        id: `prediction-${asset.id}`,
+        polyline: {
+            positions: positions,
+            width: 3,
+            material: new Cesium.PolylineDashMaterialProperty({
+                color: Cesium.Color.YELLOW.withAlpha(0.7),
+                dashLength: 16
+            }),
+            clampToGround: false
+        }
+    });
+
+    const lastPoint = predictions[predictions.length - 1];
+    const endpointEntity = viewer.entities.add({
+        id: `prediction-endpoint-${asset.id}`,
+        position: Cesium.Cartesian3.fromDegrees(lastPoint.lon, lastPoint.lat, lastPoint.altitude * 0.3048),
+        point: {
+            pixelSize: 8,
+            color: Cesium.Color.YELLOW,
+            outlineColor: Cesium.Color.WHITE,
+            outlineWidth: 2
+        },
+        label: {
+            text: `+${predictions.length - 1}min`,
+            font: '10px monospace',
+            fillColor: Cesium.Color.YELLOW,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 2,
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            pixelOffset: new Cesium.Cartesian2(0, -10)
+        }
+    });
+
+    predictionEntities[asset.id] = { pathEntity, endpointEntity };
+}
+
+window.updatePredictionPath = function(assetId) {
+    const ref = liveMarkerRefs[assetId];
+    if (ref && ref.latestAsset) {
+        if (ref.latestAsset.priority || lockedAssetIds.has(assetId)) {
+            renderPredictionPath(ref.latestAsset);
+        }
+    }
+};
+
+window.clearAllPredictions = function() {
+    Object.keys(predictionEntities).forEach(id => {
+        viewer.entities.remove(predictionEntities[id].pathEntity);
+        if (predictionEntities[id].endpointEntity) {
+            viewer.entities.remove(predictionEntities[id].endpointEntity);
+        }
+    });
+    predictionEntities = {};
+};
+
+// --- SATELLITE UI CONTROLS ---
+function setupSatelliteUI() {
+    const toggleBtn = document.getElementById('toggle-satellites');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+            if (SatelliteTracker.enabled) {
+                SatelliteTracker.stop(viewer);
+                toggleBtn.textContent = 'ENABLE SATELLITE FEED';
+                toggleBtn.classList.remove('active');
+            } else {
+                SatelliteTracker.start(viewer);
+                toggleBtn.textContent = 'DISABLE SATELLITE FEED';
+                toggleBtn.classList.add('active');
+            }
+        });
+    }
+
+    Object.keys(SATELLITE_CATEGORIES).forEach(cat => {
+        const el = document.getElementById(`toggle-${cat}`);
+        if (el) {
+            el.addEventListener('change', (e) => {
+                SatelliteTracker.toggleCategory(cat, e.target.checked, viewer);
+            });
+        }
+    });
 }

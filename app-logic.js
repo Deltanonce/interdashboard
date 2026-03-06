@@ -234,7 +234,8 @@ async function waitForMapBridgeReady(timeoutMs = 4000) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
         const mapContainer = document.getElementById('satellite-map');
-        if (mapContainer && typeof window.addOrUpdateLiveAsset === 'function') return;
+        const trackerReady = typeof window.AssetTracker !== 'undefined';
+        if (mapContainer && typeof window.addOrUpdateLiveAsset === 'function' && trackerReady) return;
         await sleep(100);
     }
     throw new Error('map-bridge-timeout');
