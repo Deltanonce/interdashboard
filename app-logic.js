@@ -8,6 +8,15 @@ let radarChart = null, currentPerspective = 'iran';
 let activeFeedFilter = 'all', credFilterOn = false, uvVisible = false;
 let lastRedPhoneTime = 0;
 
+
+function getEl(id) {
+    if (typeof window !== 'undefined' && window.DOMCache && typeof window.DOMCache.get === 'function') {
+        return window.DOMCache.get(id);
+    }
+    return document.getElementById(id);
+}
+
+
 // Panel collapse state
 const PANEL_STATES = {
     'gap-card': { collapsed: false },
@@ -94,8 +103,9 @@ async function runBootSequence() {
     }
 
     await sleep(400);
-    const seq = document.getElementById('boot-sequence');
+    const seq = getEl('boot-sequence');
     if (seq) seq.classList.add('hidden');
+    try { if (window.DOMCache && typeof window.DOMCache.init === 'function') window.DOMCache.init(); } catch (e) { }
 
     // FIX 1: initTabs() was undefined — removed call, initTabEvents() handles this at bottom
     try {
@@ -127,7 +137,12 @@ async function runBootSequence() {
     } catch (e) { }
 
     try { initMap(); } catch (e) { }
-    try { if (typeof AssetTracker !== 'undefined') AssetTracker.start(); } catch (e) { }
+    try {
+        await waitForMapBridgeReady(4000);
+        if (typeof AssetTracker !== 'undefined') AssetTracker.start();
+    } catch (e) {
+        console.warn('[BOOT] Asset tracker delayed: map bridge not ready yet.');
+    }
     try { initRadarChart(); } catch (e) { }
     try { computeIW(); renderIW(); } catch (e) { }
     try { renderACH(); } catch (e) { }
@@ -198,8 +213,18 @@ async function runBootSequence() {
     simulateRefresh(true).catch(e => { hideLoadingOverlay(); });
 }
 
+async function waitForMapBridgeReady(timeoutMs = 4000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const mapContainer = document.getElementById('satellite-map');
+        if (mapContainer && typeof window.addOrUpdateLiveAsset === 'function') return;
+        await sleep(100);
+    }
+    throw new Error('map-bridge-timeout');
+}
+
 function hideLoadingOverlay() {
-    try { document.getElementById('loading-overlay').classList.add('hidden'); } catch (e) { }
+    try { const overlay = getEl('loading-overlay'); if (overlay) overlay.classList.add('hidden'); } catch (e) { }
 }
 
 // ===== CLOCK =====
@@ -207,17 +232,17 @@ function updateClock() {
     const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000, wib = new Date(utc + 7 * 3600000);
     const p = n => String(n).padStart(2, '0');
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-    const clockEl = document.getElementById('clock-display');
-    const dateEl = document.getElementById('date-display');
-    const utcEl = document.getElementById('utc-clock');
+    const clockEl = getEl('clock-display');
+    const dateEl = getEl('date-display');
+    const utcEl = getEl('utc-clock');
     if (clockEl) clockEl.textContent = `${p(wib.getHours())}:${p(wib.getMinutes())}:${p(wib.getSeconds())} WIB`;
     if (dateEl) dateEl.textContent = `${p(wib.getDate())} ${months[wib.getMonth()]} ${wib.getFullYear()}`;
     if (utcEl) utcEl.textContent = now.toISOString().replace('T', ' ').split('.')[0] + 'Z';
 }
 
 function startThroughputTicker() {
-    const recvEl = document.getElementById('recv-rate');
-    const sendEl = document.getElementById('send-rate');
+    const recvEl = getEl('recv-rate');
+    const sendEl = getEl('send-rate');
     if (!recvEl && !sendEl) return;
     const tick = () => {
         if (recvEl) recvEl.textContent = (14 + Math.random() * 2.5).toFixed(1);
@@ -239,7 +264,7 @@ function startCountdown() {
             if (!isLoading) simulateRefresh(false);
         }
         const m = Math.floor(countdownSeconds / 60), s = countdownSeconds % 60;
-        const el = document.getElementById('countdown-display');
+        const el = getEl('countdown-display');
         if (el) el.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     }, 1000);
 }
@@ -248,11 +273,11 @@ function triggerRefresh() { if (!isLoading) { clearInterval(countdownTimer); sim
 // ===== SIMULATE REFRESH =====
 async function simulateRefresh(isInitial) {
     isLoading = true;
-    const btn = document.getElementById('refresh-btn');
+    const btn = getEl('refresh-btn');
     if (btn) btn.classList.add('loading');
-    const overlay = document.getElementById('loading-overlay');
-    const ltxt = document.getElementById('loading-text');
-    const lsteps = document.getElementById('loading-steps');
+    const overlay = getEl('loading-overlay');
+    const ltxt = getEl('loading-text');
+    const lsteps = getEl('loading-steps');
     if (overlay) overlay.classList.remove('hidden');
     if (lsteps) lsteps.innerHTML = '';
 
@@ -853,11 +878,11 @@ function renderNews() {
     const sorted = [...VERIFIED_NEWS].sort((a, b) => a.time - b.time);
     const filtered = activeFeedFilter === 'all' ? sorted : sorted.filter(n => n.impact === activeFeedFilter);
 
-    const cb = document.getElementById('feed-count');
+    const cb = getEl('feed-count');
     if (cb) cb.textContent = filtered.length;
 
     // FIX 3: Use cached element reference — was calling getElementById twice
-    const elFeed = document.getElementById('osint-feed');
+    const elFeed = getEl('osint-feed');
     if (!elFeed) return;
 
     const now = new Date();
@@ -884,9 +909,9 @@ function renderNews() {
 function renderPropaganda() {
     if (typeof PROPAGANDA_NEWS === 'undefined' || !Array.isArray(PROPAGANDA_NEWS)) return;
     const list = credFilterOn ? PROPAGANDA_NEWS.filter(n => n.cred >= 7) : PROPAGANDA_NEWS;
-    const propCount = document.getElementById('prop-count');
+    const propCount = getEl('prop-count');
     if (propCount) propCount.textContent = `${PROPAGANDA_NEWS.filter(n => n.cred < 5).length} FLAGS`;
-    const propFeed = document.getElementById('prop-feed');
+    const propFeed = getEl('prop-feed');
     if (!propFeed) return;
     propFeed.innerHTML = list.map(n => `<div class="prop-item">
         <div class="prop-item-header"><span class="prop-flag">${n.flag}</span><span class="credibility-score ${n.cred >= 8 ? 'high' : n.cred >= 6 ? 'med' : 'low'}">CRED:${n.cred}/10</span></div>
