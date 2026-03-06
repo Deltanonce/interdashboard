@@ -98,21 +98,27 @@ function initMap() {
     loadGeoBoundaries();
 
     // ── Coordinate readout (WORLDVIEW style) ──
+    let _mousemoveRafPending = false;
     leafletMap.on('mousemove', function (e) {
-        const coordEl = document.getElementById('wv-coords');
-        if (coordEl) {
-            const lat = e.latlng.lat;
-            const lon = e.latlng.lng;
-            const latD = Math.abs(lat);
-            const lonD = Math.abs(lon);
-            const latDeg = Math.floor(latD);
-            const latMin = ((latD - latDeg) * 60).toFixed(2);
-            const lonDeg = Math.floor(lonD);
-            const lonMin = ((lonD - lonDeg) * 60).toFixed(2);
-            const latDir = lat >= 0 ? 'N' : 'S';
-            const lonDir = lon >= 0 ? 'E' : 'W';
-            coordEl.textContent = `${latDeg}°${latMin}'${latDir} ${lonDeg}°${lonMin}'${lonDir}`;
-        }
+        if (_mousemoveRafPending) return;
+        _mousemoveRafPending = true;
+        const lat = e.latlng.lat;
+        const lon = e.latlng.lng;
+        requestAnimationFrame(() => {
+            _mousemoveRafPending = false;
+            const coordEl = document.getElementById('wv-coords');
+            if (coordEl) {
+                const latD = Math.abs(lat);
+                const lonD = Math.abs(lon);
+                const latDeg = Math.floor(latD);
+                const latMin = ((latD - latDeg) * 60).toFixed(2);
+                const lonDeg = Math.floor(lonD);
+                const lonMin = ((lonD - lonDeg) * 60).toFixed(2);
+                const latDir = lat >= 0 ? 'N' : 'S';
+                const lonDir = lon >= 0 ? 'E' : 'W';
+                coordEl.textContent = `${latDeg}°${latMin}'${latDir} ${lonDeg}°${lonMin}'${lonDir}`;
+            }
+        });
     });
 
     leafletMap.on('zoomend', function () {
