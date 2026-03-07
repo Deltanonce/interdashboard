@@ -35,118 +35,69 @@ function detectCapabilities() {
     }
 }
 
-async function initMap() {
+window.initMap = async function() {
     const caps = detectCapabilities();
     if (!caps.webgl) {
         window.Logger.log('MAP', 'WebGL not supported. Switching to 2D Fallback Mode.');
         return showFallbackMode();
     }
 
+    if (viewer) return viewer;
+
+    console.log('Memulai inisialisasi peta 3D dengan Token Cesium Ion...');
+
+    // Set token globally before creating the viewer.
+    Cesium.Ion.defaultAccessToken = window.CESIUM_ACCESS_TOKEN;
+
     try {
-        await initCesium();
-    } catch (err) {
-        window.Logger.log('CESIUM', 'Failed to initialize Cesium 3D Engine.', err);
+        const mapContainerId = document.getElementById('cesiumContainer') ? 'cesiumContainer' : 'satellite-map';
+
+        // Explicit Ion Asset ID 1 (Cesium World Terrain) – matches working Sandcastle code
+        viewer = new Cesium.Viewer(mapContainerId, {
+            terrainProvider: await Cesium.CesiumTerrainProvider.fromIonAssetId(1),
+            baseLayerPicker: false,
+            geocoder: false,
+            homeButton: false,
+            infoBox: false,
+            navigationHelpButton: false,
+            sceneModePicker: false,
+            animation: false,
+            timeline: false,
+            fullscreenButton: false
+        });
+
+        viewer.scene.globe.depthTestAgainstTerrain = true;
+        viewer.cesiumWidget.creditContainer.style.display = 'none';
+
+        is3DMode = true;
+        window.viewer = viewer;
+        console.log('Peta 3D berhasil dirender!');
+
+        loadSatelliteData();
+        setupInteraction();
+        startRenderLoop();
+        checkSignalJammingZones();
+        setupSentinelSweep();
+
+        await SatelliteTracker.loadAllSatellites();
+        setupSatelliteUI();
+
+        setInterval(() => {
+            const adsbVal = document.getElementById('live-adsb-count');
+            const aisVal = document.getElementById('live-ais-count');
+            const toolbarAdsb = document.getElementById('toolbar-adsb-count');
+            const toolbarAis = document.getElementById('toolbar-ais-count');
+            if (adsbVal && toolbarAdsb) toolbarAdsb.textContent = adsbVal.textContent;
+            if (aisVal && toolbarAis) toolbarAis.textContent = aisVal.textContent;
+        }, 2000);
+
+        return viewer;
+    } catch (error) {
+        console.error('Gagal memuat Cesium Viewer:', error);
+        window.Logger.log('CESIUM', 'Failed to initialize Cesium 3D Engine.', error);
         showFallbackMode();
     }
-}
-// Expose to global scope so app-logic.js (non-module script) can call it
-window.initMap = initMap;
-
-async function initCesium() {
-    if (viewer) return;
-    is3DMode = true;
-
-    // Initialize Cesium Viewer with disabled default UI for tactical look
-    Cesium.Ion.defaultAccessToken = window.CESIUM_ACCESS_TOKEN || ''; 
-
-    // Terrain: World Terrain if token available, else flat ellipsoid
-    let terrainProvider;
-    try {
-        if (window.CESIUM_ACCESS_TOKEN) {
-            terrainProvider = await Cesium.createWorldTerrainAsync();
-        } else {
-            console.warn('[3D] No Cesium Ion token - using flat terrain.');
-            terrainProvider = new Cesium.EllipsoidTerrainProvider();
-        }
-    } catch (e) {
-        console.warn('[3D] Terrain load failed, using flat terrain:', e.message);
-        terrainProvider = new Cesium.EllipsoidTerrainProvider();
-    }
-
-    // Imagery: ArcGIS World Imagery (no token required)
-    let imageryProvider;
-    try {
-        imageryProvider = await Cesium.ArcGisMapServerImageryProvider.fromUrl(
-            'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'
-        );
-    } catch (e) {
-        console.warn('[3D] ArcGIS imagery failed, using bundled fallback:', e.message);
-        imageryProvider = new Cesium.TileMapServiceImageryProvider({
-            url: Cesium.buildModuleUrl('Assets/Textures/NaturalEarthII')
-        });
-    }
-
-    viewer = new Cesium.Viewer('satellite-map', {
-        animation: false,
-        baseLayerPicker: false,
-        fullscreenButton: false,
-        vrButton: false,
-        geocoder: false,
-        homeButton: false,
-        infoBox: false,
-        sceneModePicker: false,
-        selectionIndicator: false,
-        timeline: false,
-        navigationHelpButton: false,
-        navigationInstructionsInitiallyVisible: false,
-        requestRenderMode: true, // Optimize performance
-        maximumRenderTimeChange: Infinity,
-        terrainProvider: terrainProvider,
-        imageryProvider: imageryProvider
-    });
-
-    try {
-        // Fallback: Add 3D OSM Buildings for volumetric terrain feeling
-        const buildingTileset = await Cesium.createOsmBuildingsAsync();
-        viewer.scene.primitives.add(buildingTileset);
-    } catch (e) {
-        console.warn('3D Buildings failed to load:', e);
-    }
-
-    // Dark Satellite Aesthetic: Lower saturation, boost contrast, slight blue tint via color-matrix
-    const mapContainer = document.getElementById('satellite-map');
-    if (mapContainer) {
-        mapContainer.style.filter = "saturate(0.4) contrast(1.2) sepia(0.2) hue-rotate(180deg) brightness(0.8)";
-    }
-
-    viewer.scene.globe.enableLighting = true;
-    viewer.scene.highDynamicRange = true;
-
-    // Set initial view to Middle East
-    viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(45.0, 25.0, 10000000.0)
-    });
-
-    loadSatelliteData();
-    setupInteraction();
-    startRenderLoop();
-    checkSignalJammingZones();
-    setupSentinelSweep();
-
-    // --- Satellite Tracker Initialization ---
-    await SatelliteTracker.loadAllSatellites();
-    setupSatelliteUI();
-
-    // Sync UI pills
-    setInterval(() => {
-        const adsbVal = document.getElementById('live-adsb-count');
-        const aisVal = document.getElementById('live-ais-count');
-        const toolbarAdsb = document.getElementById('toolbar-adsb-count');
-        const toolbarAis = document.getElementById('toolbar-ais-count');
-        if (adsbVal && toolbarAdsb) toolbarAdsb.textContent = adsbVal.textContent;
-        if (aisVal && toolbarAis) toolbarAis.textContent = aisVal.textContent;
-    }, 2000);
-}
+};
 
 function showFallbackMode() {
     is3DMode = false;
