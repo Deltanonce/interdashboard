@@ -11,7 +11,7 @@ const REFRESH_INTERVAL = 30000;
 // feedUrl points to real public webcam snapshots/embeds where available.
 const MIDDLE_EAST_CAMERAS = [
     // ── MARITIME CHOKEPOINTS ──
-    { id: 'ME001', name: 'Suez Canal — Port Said Entrance', lat: 31.2653, lon: 32.3019, status: 'ACTIVE', type: 'CHOKEPOINT', region: 'EGYPT', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/wIBSJMp8M_g?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME001', name: 'Suez Canal — Port Said Entrance', lat: 31.2653, lon: 32.3019, status: 'ACTIVE', type: 'CHOKEPOINT', region: 'EGYPT', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
     { id: 'ME002', name: 'Suez Canal — Great Bitter Lake', lat: 30.3500, lon: 32.3700, status: 'ACTIVE', type: 'CHOKEPOINT', region: 'EGYPT', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
     { id: 'ME003', name: 'Strait of Hormuz — Bandar Abbas', lat: 27.1832, lon: 56.2666, status: 'ACTIVE', type: 'CHOKEPOINT', region: 'IRAN', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
     { id: 'ME004', name: 'Bab el-Mandeb — Perim Island', lat: 12.6550, lon: 43.4200, status: 'ACTIVE', type: 'CHOKEPOINT', region: 'YEMEN', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
@@ -29,9 +29,9 @@ const MIDDLE_EAST_CAMERAS = [
     { id: 'ME012', name: 'Bahrain — Naval Support Activity', lat: 26.2361, lon: 50.5860, status: 'ACTIVE', type: 'MILITARY', region: 'BAHRAIN', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
 
     // ── SAUDI ARABIA ──
-    { id: 'ME013', name: 'Riyadh — King Fahd Road', lat: 24.7136, lon: 46.6753, status: 'ACTIVE', type: 'INFRASTRUCTURE', region: 'SAUDI', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/ia6hI1YMWFI?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME013', name: 'Riyadh — King Fahd Road', lat: 24.7136, lon: 46.6753, status: 'ACTIVE', type: 'INFRASTRUCTURE', region: 'SAUDI', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
     { id: 'ME014', name: 'Jeddah — Islamic Port', lat: 21.4858, lon: 39.1925, status: 'ACTIVE', type: 'PORT', region: 'SAUDI', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
-    { id: 'ME015', name: 'Mecca — Grand Mosque Perimeter', lat: 21.4225, lon: 39.8262, status: 'ACTIVE', type: 'CRITICAL', region: 'SAUDI', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/lXFKH3VPSsI?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME015', name: 'Mecca — Grand Mosque Perimeter', lat: 21.4225, lon: 39.8262, status: 'ACTIVE', type: 'CRITICAL', region: 'SAUDI', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/live_stream?channel=UCbkAdsxSnoMEu5gxRFxnm2A&autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
 
     // ── CONFLICT ZONES ──
     { id: 'ME016', name: 'Baghdad — Green Zone', lat: 33.3120, lon: 44.3615, status: 'ACTIVE', type: 'CONFLICT', region: 'IRAQ', feedType: 'tactical', feedUrl: null, classification: 'TOP SECRET' },
@@ -45,10 +45,10 @@ const MIDDLE_EAST_CAMERAS = [
 
     // ── ISRAEL / LEVANT ──
     { id: 'ME024', name: 'Tel Aviv — Azrieli Skyline', lat: 32.0740, lon: 34.7920, status: 'ACTIVE', type: 'URBAN', region: 'ISRAEL', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/8ZA4GRNdu_0?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
-    { id: 'ME025', name: 'Haifa — Port and Bay', lat: 32.8191, lon: 34.9983, status: 'ACTIVE', type: 'PORT', region: 'ISRAEL', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/Q_VbjN1p2fk?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME025', name: 'Haifa — Port and Bay', lat: 32.8191, lon: 34.9983, status: 'ACTIVE', type: 'PORT', region: 'ISRAEL', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
     { id: 'ME026', name: 'Jerusalem — Old City Walls', lat: 31.7767, lon: 35.2345, status: 'ACTIVE', type: 'CRITICAL', region: 'ISRAEL', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/1x_FGXLGD6Y?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
     { id: 'ME027', name: 'Beirut — Port District', lat: 33.9020, lon: 35.5180, status: 'ACTIVE', type: 'PORT', region: 'LEBANON', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
-    { id: 'ME028', name: 'Amman — Downtown / Citadel', lat: 31.9539, lon: 35.9340, status: 'ACTIVE', type: 'URBAN', region: 'JORDAN', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/wlfbbkjODig?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME028', name: 'Amman — Downtown / Citadel', lat: 31.9539, lon: 35.9340, status: 'ACTIVE', type: 'URBAN', region: 'JORDAN', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
 
     // ── IRAN ──
     { id: 'ME029', name: 'Tehran — Azadi Tower', lat: 35.6997, lon: 51.3381, status: 'ACTIVE', type: 'URBAN', region: 'IRAN', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
@@ -275,6 +275,7 @@ class TrafficCameraSystem {
                     </div>
                     <div class="cctv-popup-controls">
                         <span class="cctv-classification-badge" style="color:${classColor};border-color:${classColor}">${this._escapeHtml(cam.classification || 'UNCLASSIFIED')}</span>
+                        ${isStream ? '<button class="cctv-view-toggle" id="cctv-view-toggle" title="Switch view">🔄 TACTICAL</button>' : ''}
                         <span class="cctv-live-indicator" id="cctv-live-dot">● LIVE</span>
                         <button class="cctv-popup-close" id="cctv-popup-close" title="Close">&times;</button>
                     </div>
@@ -359,6 +360,15 @@ class TrafficCameraSystem {
             if (e.key === 'Escape') this.closePopup();
         });
 
+        // Setup view toggle for stream cameras
+        if (isStream) {
+            const toggleBtn = overlay.querySelector('#cctv-view-toggle');
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', () => this._togglePopupView(cam));
+            }
+            this._setupStreamMonitor(cam);
+        }
+
         // Start timestamp update for all feed types
         this._startPopupRefresh(cam);
 
@@ -386,6 +396,83 @@ class TrafficCameraSystem {
                     <div class="cctv-tactical-note">RESTRICTED FEED — REQUIRES SCI CLEARANCE</div>
                 </div>
             </div>`;
+    }
+
+    _togglePopupView(cam) {
+        const container = document.getElementById('cctv-feed-container');
+        const toggleBtn = document.getElementById('cctv-view-toggle');
+        const infoMsg = document.getElementById('cctv-info-msg');
+        if (!container) return;
+
+        const iframe = container.querySelector('.cctv-feed-iframe');
+
+        if (iframe) {
+            // Currently showing stream → switch to tactical
+            const ts = new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+            iframe.remove();
+
+            // Add crosshair if not present
+            const hud = container.querySelector('.cctv-feed-hud');
+            if (hud && !container.querySelector('.cctv-crosshair')) {
+                const ch = document.createElement('div');
+                ch.className = 'cctv-crosshair';
+                hud.parentNode.insertBefore(ch, hud);
+            }
+
+            // Add scanline if not present
+            if (!container.querySelector('.cctv-scanline')) {
+                const sl = document.createElement('div');
+                sl.className = 'cctv-scanline';
+                container.appendChild(sl);
+            }
+
+            // Insert tactical overlay at the beginning of container
+            const temp = document.createElement('div');
+            temp.innerHTML = this._buildTacticalOverlay(cam, ts);
+            container.insertBefore(temp.firstElementChild, container.firstChild);
+
+            if (toggleBtn) toggleBtn.textContent = '📺 STREAM';
+            if (infoMsg) infoMsg.innerHTML = '<span class="cctv-msg-icon">ℹ</span> Switched to tactical overlay. Click 📺 STREAM to try live video again.';
+
+            const refEl = document.getElementById('cctv-hud-refresh');
+            if (refEl) refEl.textContent = 'TACTICAL OVERLAY';
+        } else {
+            // Currently showing tactical → switch to stream
+            const tactical = container.querySelector('.cctv-tactical-feed');
+            if (tactical) tactical.remove();
+
+            const crosshair = container.querySelector('.cctv-crosshair');
+            if (crosshair) crosshair.remove();
+
+            const scanline = container.querySelector('.cctv-scanline');
+            if (scanline) scanline.remove();
+
+            const iframeEl = document.createElement('iframe');
+            iframeEl.src = cam.feedUrl;
+            iframeEl.className = 'cctv-feed-iframe';
+            iframeEl.id = 'cctv-feed-iframe';
+            iframeEl.allow = 'autoplay; encrypted-media';
+            iframeEl.allowFullscreen = true;
+            iframeEl.frameBorder = '0';
+            container.insertBefore(iframeEl, container.firstChild);
+
+            if (toggleBtn) toggleBtn.textContent = '🔄 TACTICAL';
+            if (infoMsg) infoMsg.innerHTML = '<span class="cctv-msg-icon">ℹ</span> Live video stream from OSINT source. Feed may have latency.';
+
+            const refEl = document.getElementById('cctv-hud-refresh');
+            if (refEl) refEl.textContent = 'STREAM: LIVE';
+        }
+    }
+
+    _setupStreamMonitor(cam) {
+        // Show helpful hint after timeout if stream may not be loading
+        this._streamCheckTimeout = setTimeout(() => {
+            if (!this.popup) return;
+            const iframe = this.popup.querySelector('.cctv-feed-iframe');
+            if (iframe) {
+                this._showInfoMsg('Stream may take time to load. If unavailable, click 🔄 TACTICAL to switch view.', 'warn');
+            }
+        }, 8000);
     }
 
     _startPopupRefresh(cam) {
@@ -428,6 +515,10 @@ class TrafficCameraSystem {
         if (this.popupRefreshTimer) {
             clearInterval(this.popupRefreshTimer);
             this.popupRefreshTimer = null;
+        }
+        if (this._streamCheckTimeout) {
+            clearTimeout(this._streamCheckTimeout);
+            this._streamCheckTimeout = null;
         }
         if (this.popup) {
             this.popup.classList.remove('cctv-popup-visible');

@@ -1388,6 +1388,22 @@ body.spy-sim .flash-new { animation: flash-new-anim 1.5s ease-out; }
   letter-spacing: 1px;
   margin-right: 6px;
 }
+.cctv-view-toggle {
+  background: rgba(0, 229, 255, 0.1);
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  color: #00e5ff;
+  font-size: 9px;
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  padding: 2px 8px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  margin-right: 6px;
+  transition: all 0.2s;
+}
+.cctv-view-toggle:hover {
+  background: rgba(0, 229, 255, 0.25);
+  border-color: #00e5ff;
+}
 /* Tactical ISR overlay for classified/simulated feeds */
 .cctv-tactical-feed {
   position: relative;
