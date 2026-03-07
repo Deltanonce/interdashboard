@@ -31,7 +31,7 @@ const MIDDLE_EAST_CAMERAS = [
     // ── SAUDI ARABIA ──
     { id: 'ME013', name: 'Riyadh — King Fahd Road', lat: 24.7136, lon: 46.6753, status: 'ACTIVE', type: 'INFRASTRUCTURE', region: 'SAUDI', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
     { id: 'ME014', name: 'Jeddah — Islamic Port', lat: 21.4858, lon: 39.1925, status: 'ACTIVE', type: 'PORT', region: 'SAUDI', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
-    { id: 'ME015', name: 'Mecca — Grand Mosque Perimeter', lat: 21.4225, lon: 39.8262, status: 'ACTIVE', type: 'CRITICAL', region: 'SAUDI', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/live_stream?channel=UCbkAdsxSnoMEu5gxRFxnm2A&autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME015', name: 'Mecca — Grand Mosque Perimeter', lat: 21.4225, lon: 39.8262, status: 'ACTIVE', type: 'CRITICAL', region: 'SAUDI', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/j-6Gklz5kLY?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
 
     // ── CONFLICT ZONES ──
     { id: 'ME016', name: 'Baghdad — Green Zone', lat: 33.3120, lon: 44.3615, status: 'ACTIVE', type: 'CONFLICT', region: 'IRAQ', feedType: 'tactical', feedUrl: null, classification: 'TOP SECRET' },
@@ -193,9 +193,14 @@ class TrafficCameraSystem {
             const statusDot = cam.status === 'ACTIVE'
                 ? '<span class="cam-status cam-online">●</span>'
                 : '<span class="cam-status cam-offline">◐</span>';
+            const hasLiveFeed = cam.feedType === 'stream' && cam.feedUrl;
+            const feedBadge = hasLiveFeed
+                ? '<span class="cam-feed-badge cam-feed-live" title="Live stream available">📺</span>'
+                : '<span class="cam-feed-badge cam-feed-tac" title="Tactical overlay only">🎯</span>';
             return `
             <div class="cam-item" data-cam-id="${cam.id}" onclick="window.TrafficCams.focusCamera('${cam.id}')">
                 ${statusDot}
+                ${feedBadge}
                 <span class="cam-name">${cam.name}</span>
                 <span class="cam-type" style="color:${color}">${cam.type}</span>
             </div>`;
@@ -276,7 +281,8 @@ class TrafficCameraSystem {
                     <div class="cctv-popup-controls">
                         <span class="cctv-classification-badge" style="color:${classColor};border-color:${classColor}">${this._escapeHtml(cam.classification || 'UNCLASSIFIED')}</span>
                         ${isStream ? '<button class="cctv-view-toggle" id="cctv-view-toggle" title="Switch view">🔄 TACTICAL</button>' : ''}
-                        <span class="cctv-live-indicator" id="cctv-live-dot">● LIVE</span>
+                        ${isStream ? '<button class="cctv-view-toggle" id="cctv-retry-stream" title="Retry stream" style="display:none">🔁 RETRY</button>' : ''}
+                        <span class="cctv-live-indicator" id="cctv-live-dot">${isStream ? '● LIVE' : '◆ TAC'}</span>
                         <button class="cctv-popup-close" id="cctv-popup-close" title="Close">&times;</button>
                     </div>
                 </div>
@@ -338,9 +344,9 @@ class TrafficCameraSystem {
                         <div class="cctv-info-msg" id="cctv-info-msg">
                             <span class="cctv-msg-icon">ℹ</span>
                             ${isStream
-                                ? 'Live video stream from OSINT source. Feed may have latency.'
+                                ? 'Live video stream from OSINT source. Feed may have latency. Auto-fallback to tactical if unavailable.'
                                 : isTactical
-                                    ? 'Tactical overlay — simulated ISR feed. Real sensor data requires SCI access.'
+                                    ? 'Tactical overlay — no live feed available for this location. Showing simulated ISR display.'
                                     : 'Snapshot relay — image refreshes periodically from remote sensor.'}
                         </div>
                     </div>
@@ -365,6 +371,10 @@ class TrafficCameraSystem {
             const toggleBtn = overlay.querySelector('#cctv-view-toggle');
             if (toggleBtn) {
                 toggleBtn.addEventListener('click', () => this._togglePopupView(cam));
+            }
+            const retryBtn = overlay.querySelector('#cctv-retry-stream');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', () => this._retryStream(cam));
             }
             this._setupStreamMonitor(cam);
         }
@@ -393,7 +403,7 @@ class TrafficCameraSystem {
                     <div class="cctv-tactical-class" style="color:var(--neon-red)">
                         CLASSIFICATION: ${this._escapeHtml(cam.classification || 'UNCLASSIFIED')}
                     </div>
-                    <div class="cctv-tactical-note">RESTRICTED FEED — REQUIRES SCI CLEARANCE</div>
+                    <div class="cctv-tactical-note">${cam.classification === 'UNCLASSIFIED' ? 'NO LIVE FEED AVAILABLE — TACTICAL OVERLAY ACTIVE' : 'RESTRICTED FEED — LIVE SENSOR REQUIRES AUTHORIZATION'}</div>
                 </div>
             </div>`;
     }
@@ -465,14 +475,70 @@ class TrafficCameraSystem {
     }
 
     _setupStreamMonitor(cam) {
-        // Show helpful hint after timeout if stream may not be loading
+        // Phase 1: Show hint after 8 seconds
         this._streamCheckTimeout = setTimeout(() => {
             if (!this.popup) return;
             const iframe = this.popup.querySelector('.cctv-feed-iframe');
             if (iframe) {
-                this._showInfoMsg('Stream may take time to load. If unavailable, click 🔄 TACTICAL to switch view.', 'warn');
+                this._showInfoMsg('Stream loading... If blank after a few seconds, will auto-switch to tactical view.', 'warn');
             }
         }, 8000);
+
+        // Phase 2: Auto-fallback after 15 seconds if stream appears broken
+        this._streamFallbackTimeout = setTimeout(() => {
+            if (!this.popup) return;
+            const iframe = this.popup.querySelector('.cctv-feed-iframe');
+            if (!iframe) return; // Already switched to tactical
+
+            // Auto-switch to tactical overlay
+            this._togglePopupView(cam);
+            this._showInfoMsg('Live stream unavailable — auto-switched to tactical overlay. Click 🔁 RETRY to try again.', 'warn');
+
+            // Show the retry button, hide the tactical toggle
+            const retryBtn = document.getElementById('cctv-retry-stream');
+            const toggleBtn = document.getElementById('cctv-view-toggle');
+            if (retryBtn) retryBtn.style.display = '';
+            if (toggleBtn) toggleBtn.style.display = 'none';
+
+            const liveDot = document.getElementById('cctv-live-dot');
+            if (liveDot) {
+                liveDot.textContent = '▲ OFFLINE';
+                liveDot.style.color = '#ff9100';
+            }
+        }, 15000);
+    }
+
+    _retryStream(cam) {
+        // Switch back to stream view
+        const container = document.getElementById('cctv-feed-container');
+        if (!container) return;
+
+        const tactical = container.querySelector('.cctv-tactical-feed');
+        if (tactical) {
+            this._togglePopupView(cam); // Switch back to iframe
+        }
+
+        // Reset buttons
+        const retryBtn = document.getElementById('cctv-retry-stream');
+        const toggleBtn = document.getElementById('cctv-view-toggle');
+        if (retryBtn) retryBtn.style.display = 'none';
+        if (toggleBtn) {
+            toggleBtn.style.display = '';
+            toggleBtn.textContent = '🔄 TACTICAL';
+        }
+
+        const liveDot = document.getElementById('cctv-live-dot');
+        if (liveDot) {
+            liveDot.textContent = '● LIVE';
+            liveDot.style.color = '';
+        }
+
+        this._showInfoMsg('Retrying live stream... Feed may take a moment to load.', 'info');
+
+        // Re-arm the stream monitor
+        if (this._streamCheckTimeout) clearTimeout(this._streamCheckTimeout);
+        if (this._streamFallbackTimeout) clearTimeout(this._streamFallbackTimeout);
+        this._setupStreamMonitor(cam);
     }
 
     _startPopupRefresh(cam) {
@@ -515,6 +581,10 @@ class TrafficCameraSystem {
         if (this.popupRefreshTimer) {
             clearInterval(this.popupRefreshTimer);
             this.popupRefreshTimer = null;
+        }
+        if (this._streamFallbackTimeout) {
+            clearTimeout(this._streamFallbackTimeout);
+            this._streamFallbackTimeout = null;
         }
         if (this._streamCheckTimeout) {
             clearTimeout(this._streamCheckTimeout);

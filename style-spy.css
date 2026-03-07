@@ -1182,6 +1182,9 @@ body.spy-sim .flash-new { animation: flash-new-anim 1.5s ease-out; }
 .cam-status { font-size: 8px; }
 .cam-online { color: var(--neon-green); }
 .cam-offline { color: var(--neon-red); }
+.cam-feed-badge { font-size: 9px; line-height: 1; flex-shrink: 0; }
+.cam-feed-live { opacity: 1; }
+.cam-feed-tac { opacity: 0.5; }
 .cam-name { flex: 1; color: var(--text-primary); font-size: 9px; }
 .cam-type {
   font-size: 7px;
