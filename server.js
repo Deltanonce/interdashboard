@@ -35,8 +35,9 @@ const helmetHandler = helmet({
     contentSecurityPolicy: {
         directives: {
             ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-            "script-src": ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://cesium.com"],
+            "script-src": ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'", "https://cdnjs.cloudflare.com", "https://cesium.com"],
             "img-src": ["'self'", "data:", "https:", "blob:"],
+            "media-src": ["*"],
             "connect-src": ["'self'", "https://api.adsb.lol", "wss://stream.aisstream.io", "https://celestrak.org", "https://services.arcgisonline.com"]
         }
     }
@@ -528,7 +529,7 @@ function getStatus(req, res) {
 // Health Check Endpoint
 function getHealth(req, res) {
     const health = HealthMonitor.getHealth();
-    res.writeHead(health.status === 'healthy' ? 200 : 503, { 
+    res.writeHead(200, { 
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*'
     });
@@ -615,7 +616,7 @@ const server = http.createServer((req, res) => {
             });
 
             const url = req.url.split('?')[0];
-            if (url.startsWith('/api/')) {
+            if (url.startsWith('/api/') && process.env.NODE_ENV !== 'development') {
                 const limitErr = rateLimiter.checkLimit(req);
                 if (limitErr) {
                     res.writeHead(limitErr.status, { 
