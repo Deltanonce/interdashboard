@@ -271,7 +271,8 @@ class TrafficCameraSystem {
         // Check client-side cache (15 min)
         const cached = this._resolvedUrls[cam.channelId];
         if (cached && (Date.now() - cached.ts) < 15 * 60 * 1000) {
-            return cached.embedUrl;
+            if (cached.videoId) return { watchUrl: cached.watchUrl, videoId: cached.videoId };
+            return null;
         }
 
         try {
@@ -280,14 +281,14 @@ class TrafficCameraSystem {
             const data = await resp.json();
 
             if (data.videoId) {
-                const embedUrl = `https://www.youtube-nocookie.com/embed/${data.videoId}?autoplay=1&mute=1&rel=0&modestbranding=1`;
-                this._resolvedUrls[cam.channelId] = { embedUrl, videoId: data.videoId, ts: Date.now() };
+                const watchUrl = `https://www.youtube.com/watch?v=${data.videoId}`;
+                this._resolvedUrls[cam.channelId] = { watchUrl, videoId: data.videoId, ts: Date.now() };
                 console.log(`[ISR-RESOLVE] ${cam.id}: channel ${cam.channelId} → video ${data.videoId}`);
-                return embedUrl;
+                return { watchUrl, videoId: data.videoId };
             }
 
             console.warn(`[ISR-RESOLVE] ${cam.id}: No live stream found for channel ${cam.channelId}`);
-            this._resolvedUrls[cam.channelId] = { embedUrl: null, videoId: null, ts: Date.now() };
+            this._resolvedUrls[cam.channelId] = { watchUrl: null, videoId: null, ts: Date.now() };
             return null;
         } catch (err) {
             console.error(`[ISR-RESOLVE] ${cam.id}: Resolver error: ${err.message}`);
@@ -317,7 +318,15 @@ class TrafficCameraSystem {
         // Build the initial feed content
         let feedContent;
         if (hasStreamUrl) {
-            feedContent = `<iframe src="${cam.feedUrl}" class="cctv-feed-iframe" id="cctv-feed-iframe" allow="autoplay; encrypted-media" allowfullscreen frameborder="0"></iframe>`;
+            // Will inject thumbnail preview after popup renders
+            feedContent = `<div class="cctv-tactical-feed" id="cctv-stream-loading">
+                <div class="cctv-static-noise"></div>
+                <div class="cctv-tactical-grid"></div>
+                <div class="cctv-tactical-center">
+                    <div class="cctv-tactical-icon" style="animation: pulse 1s infinite">▶</div>
+                    <div class="cctv-tactical-label" style="color:#00e5ff">PREPARING STREAM PREVIEW</div>
+                </div>
+            </div>`;
         } else if (needsResolve) {
             // Show loading state while resolving
             feedContent = `<div class="cctv-tactical-feed" id="cctv-stream-loading">
@@ -443,8 +452,12 @@ class TrafficCameraSystem {
             if (needsResolve) {
                 // Async resolve the stream URL
                 this._resolveAndInjectStream(cam);
-            } else {
-                this._setupStreamMonitor(cam);
+            } else if (hasStreamUrl) {
+                // Already resolved — inject thumbnail preview immediately
+                const container = document.getElementById('cctv-feed-container');
+                const loading = document.getElementById('cctv-stream-loading');
+                if (loading) loading.remove();
+                if (container) this._injectStreamPreview(cam, container);
             }
         }
 
@@ -482,55 +495,26 @@ class TrafficCameraSystem {
         if (!container || !this.popup) return;
 
         // Resolve via server-side endpoint (fetches YouTube page, extracts video ID)
-        const embedUrl = await this._resolveStreamUrl(cam);
+        const resolved = await this._resolveStreamUrl(cam);
 
         // Check popup still open (user may have closed during fetch)
         if (!this.popup || !document.getElementById('cctv-feed-container')) return;
 
         const loading = document.getElementById('cctv-stream-loading');
 
-        if (embedUrl) {
-            // Success — store resolved URL on the cam object and inject iframe
-            cam.feedUrl = embedUrl;
-            // Also store videoId for Watch on YouTube link
-            const cachedData = this._resolvedUrls[cam.channelId];
-            cam._videoId = cachedData?.videoId || null;
+        if (resolved) {
+            // Success — store resolved data on the cam object
+            cam.feedUrl = resolved.watchUrl;
+            cam._videoId = resolved.videoId;
 
             if (loading) loading.remove();
 
-            const iframeEl = document.createElement('iframe');
-            iframeEl.src = embedUrl;
-            iframeEl.className = 'cctv-feed-iframe';
-            iframeEl.id = 'cctv-feed-iframe';
-            iframeEl.allow = 'autoplay; encrypted-media; picture-in-picture';
-            iframeEl.allowFullscreen = true;
-            iframeEl.frameBorder = '0';
-            iframeEl.referrerPolicy = 'no-referrer';
-            container.insertBefore(iframeEl, container.firstChild);
+            // Build YouTube thumbnail preview with play overlay (bypasses iframe embed restrictions)
+            this._injectStreamPreview(cam, container);
 
-            // Add Watch on YouTube link below iframe as fallback
-            if (cam._videoId) {
-                let ytLink = container.querySelector('.cctv-yt-fallback');
-                if (!ytLink) {
-                    ytLink = document.createElement('a');
-                    ytLink.className = 'cctv-yt-fallback';
-                    ytLink.target = '_blank';
-                    ytLink.rel = 'noopener noreferrer';
-                    ytLink.style.cssText = 'display:block;text-align:center;padding:4px;font-size:10px;color:#00e5ff;text-decoration:none;background:rgba(0,0,0,0.6);';
-                    const hudEl = container.querySelector('.cctv-feed-hud');
-                    if (hudEl) hudEl.parentNode.insertBefore(ytLink, hudEl);
-                    else container.appendChild(ytLink);
-                }
-                ytLink.href = `https://www.youtube.com/watch?v=${encodeURIComponent(cam._videoId)}`;
-                ytLink.textContent = '▶ If embed fails: Click here to watch directly on YouTube';
-            }
-
-            this._showInfoMsg('Live stream resolved and connected. If video shows an error, click the YouTube link below the player.', 'info');
+            this._showInfoMsg('Live stream resolved. Click the preview to watch on YouTube.', 'info');
             const refEl = document.getElementById('cctv-hud-refresh');
             if (refEl) refEl.textContent = 'STREAM: LIVE';
-
-            // Now arm the standard stream monitor
-            this._setupStreamMonitor(cam);
         } else {
             // Resolution failed — switch to tactical overlay
             if (loading) loading.remove();
@@ -578,12 +562,12 @@ class TrafficCameraSystem {
         const infoMsg = document.getElementById('cctv-info-msg');
         if (!container) return;
 
-        const iframe = container.querySelector('.cctv-feed-iframe');
+        const streamPreview = container.querySelector('.cctv-stream-preview') || container.querySelector('.cctv-feed-iframe');
 
-        if (iframe) {
+        if (streamPreview) {
             // Currently showing stream → switch to tactical
             const ts = new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
-            iframe.remove();
+            streamPreview.remove();
 
             // Add crosshair if not present
             const hud = container.querySelector('.cctv-feed-hud');
@@ -615,12 +599,11 @@ class TrafficCameraSystem {
             if (!cam.feedUrl && cam.channelId) {
                 // Need to resolve via server first
                 if (toggleBtn) toggleBtn.textContent = '⟳ RESOLVING...';
-                this._resolveStreamUrl(cam).then(embedUrl => {
+                this._resolveStreamUrl(cam).then(resolved => {
                     if (!this.popup) return;
-                    if (embedUrl) {
-                        cam.feedUrl = embedUrl;
-                        const cachedData = this._resolvedUrls[cam.channelId];
-                        cam._videoId = cachedData?.videoId || null;
+                    if (resolved) {
+                        cam.feedUrl = resolved.watchUrl;
+                        cam._videoId = resolved.videoId;
                         this._doSwitchToStream(cam, container, toggleBtn, infoMsg);
                     } else {
                         if (toggleBtn) toggleBtn.textContent = '📺 STREAM';
@@ -634,6 +617,54 @@ class TrafficCameraSystem {
         }
     }
 
+    _injectStreamPreview(cam, container) {
+        // Remove any existing preview
+        const old = container.querySelector('.cctv-stream-preview');
+        if (old) old.remove();
+
+        const videoId = cam._videoId;
+        const watchUrl = cam.feedUrl;
+
+        // Build clickable thumbnail preview with LIVE overlay
+        const preview = document.createElement('a');
+        preview.className = 'cctv-stream-preview';
+        preview.href = watchUrl;
+        preview.target = '_blank';
+        preview.rel = 'noopener noreferrer';
+        preview.title = 'Click to watch live stream on YouTube';
+
+        // YouTube high-quality thumbnail
+        const thumb = document.createElement('img');
+        thumb.className = 'cctv-stream-thumb';
+        thumb.src = `https://img.youtube.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
+        thumb.alt = `${cam.designation} - Live Stream Preview`;
+        thumb.loading = 'eager';
+        // Fallback to maxresdefault then default
+        thumb.onerror = function() {
+            if (this.src.includes('hqdefault')) {
+                this.src = `https://img.youtube.com/vi/${encodeURIComponent(videoId)}/mqdefault.jpg`;
+            }
+        };
+
+        // Play button overlay
+        const playOverlay = document.createElement('div');
+        playOverlay.className = 'cctv-play-overlay';
+        playOverlay.innerHTML = `
+            <div class="cctv-play-btn">
+                <svg viewBox="0 0 68 48" width="68" height="48">
+                    <path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#ff0000"/>
+                    <path d="M45 24L27 14v20" fill="#fff"/>
+                </svg>
+            </div>
+            <div class="cctv-live-badge">● LIVE</div>
+            <div class="cctv-play-text">CLICK TO WATCH ON YOUTUBE</div>
+        `;
+
+        preview.appendChild(thumb);
+        preview.appendChild(playOverlay);
+        container.insertBefore(preview, container.firstChild);
+    }
+
     _doSwitchToStream(cam, container, toggleBtn, infoMsg) {
         const tactical = container.querySelector('.cctv-tactical-feed');
         if (tactical) tactical.remove();
@@ -644,35 +675,10 @@ class TrafficCameraSystem {
         const scanline = container.querySelector('.cctv-scanline');
         if (scanline) scanline.remove();
 
-        const iframeEl = document.createElement('iframe');
-        iframeEl.src = cam.feedUrl;
-        iframeEl.className = 'cctv-feed-iframe';
-        iframeEl.id = 'cctv-feed-iframe';
-        iframeEl.allow = 'autoplay; encrypted-media; picture-in-picture';
-        iframeEl.allowFullscreen = true;
-        iframeEl.frameBorder = '0';
-        iframeEl.referrerPolicy = 'no-referrer';
-        container.insertBefore(iframeEl, container.firstChild);
-
-        // Add YouTube direct link
-        if (cam._videoId) {
-            let ytLink = container.querySelector('.cctv-yt-fallback');
-            if (!ytLink) {
-                ytLink = document.createElement('a');
-                ytLink.className = 'cctv-yt-fallback';
-                ytLink.target = '_blank';
-                ytLink.rel = 'noopener noreferrer';
-                ytLink.style.cssText = 'display:block;text-align:center;padding:4px;font-size:10px;color:#00e5ff;text-decoration:none;background:rgba(0,0,0,0.6);';
-                const hudEl = container.querySelector('.cctv-feed-hud');
-                if (hudEl) hudEl.parentNode.insertBefore(ytLink, hudEl);
-                else container.appendChild(ytLink);
-            }
-            ytLink.href = `https://www.youtube.com/watch?v=${encodeURIComponent(cam._videoId)}`;
-            ytLink.textContent = '▶ If embed fails: Click here to watch directly on YouTube';
-        }
+        this._injectStreamPreview(cam, container);
 
         if (toggleBtn) toggleBtn.textContent = '🔄 TACTICAL';
-        if (infoMsg) infoMsg.innerHTML = '<span class="cctv-msg-icon">ℹ</span> Live video stream. If embed shows error, use the YouTube link below player.';
+        if (infoMsg) infoMsg.innerHTML = '<span class="cctv-msg-icon">ℹ</span> Click the preview to watch the live stream on YouTube.';
 
         const refEl = document.getElementById('cctv-hud-refresh');
         if (refEl) refEl.textContent = 'STREAM: LIVE';
@@ -685,37 +691,8 @@ class TrafficCameraSystem {
     }
 
     _setupStreamMonitor(cam) {
-        // Phase 1: Show hint after 8 seconds
-        this._streamCheckTimeout = setTimeout(() => {
-            if (!this.popup) return;
-            const iframe = this.popup.querySelector('.cctv-feed-iframe');
-            if (iframe) {
-                this._showInfoMsg('Stream loading... If blank after a few seconds, will auto-switch to tactical view.', 'warn');
-            }
-        }, 8000);
-
-        // Phase 2: Auto-fallback after 15 seconds if stream appears broken
-        this._streamFallbackTimeout = setTimeout(() => {
-            if (!this.popup) return;
-            const iframe = this.popup.querySelector('.cctv-feed-iframe');
-            if (!iframe) return; // Already switched to tactical
-
-            // Auto-switch to tactical overlay
-            this._togglePopupView(cam);
-            this._showInfoMsg('Live stream unavailable — auto-switched to tactical overlay. Click 🔁 RETRY to try again.', 'warn');
-
-            // Show the retry button, hide the tactical toggle
-            const retryBtn = document.getElementById('cctv-retry-stream');
-            const toggleBtn = document.getElementById('cctv-view-toggle');
-            if (retryBtn) retryBtn.style.display = '';
-            if (toggleBtn) toggleBtn.style.display = 'none';
-
-            const liveDot = document.getElementById('cctv-live-dot');
-            if (liveDot) {
-                liveDot.textContent = '▲ OFFLINE';
-                liveDot.style.color = '#ff9100';
-            }
-        }, 15000);
+        // No auto-fallback needed for thumbnail preview approach
+        // Stream preview is always visible — user clicks to watch on YouTube
     }
 
     _retryStream(cam) {
@@ -733,6 +710,8 @@ class TrafficCameraSystem {
         if (tactical) tactical.remove();
         const oldIframe = container.querySelector('.cctv-feed-iframe');
         if (oldIframe) oldIframe.remove();
+        const oldPreview = container.querySelector('.cctv-stream-preview');
+        if (oldPreview) oldPreview.remove();
         const crosshair = container.querySelector('.cctv-crosshair');
         if (crosshair) crosshair.remove();
         const scanline = container.querySelector('.cctv-scanline');
