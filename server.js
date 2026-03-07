@@ -38,7 +38,18 @@ const helmetHandler = helmet({
             "script-src": ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'", "https://cdnjs.cloudflare.com", "https://cesium.com"],
             "img-src": ["'self'", "data:", "https:", "blob:"],
             "media-src": ["*"],
-            "connect-src": ["'self'", "https://api.adsb.lol", "wss://stream.aisstream.io", "https://celestrak.org", "https://services.arcgisonline.com"]
+            "worker-src": ["'self'", "blob:"],
+            "connect-src": [
+                "'self'",
+                "https://api.adsb.lol",
+                "wss://stream.aisstream.io",
+                "https://celestrak.org",
+                "https://services.arcgisonline.com",
+                "https://iserver.arcgisonline.com",
+                "https://api.cesium.com",
+                "https://assets.ion.cesium.com",
+                "https://ion.cesium.com"
+            ]
         }
     }
 });

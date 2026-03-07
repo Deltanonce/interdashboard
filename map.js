@@ -49,6 +49,8 @@ async function initMap() {
         showFallbackMode();
     }
 }
+// Expose to global scope so app-logic.js (non-module script) can call it
+window.initMap = initMap;
 
 async function initCesium() {
     if (viewer) return;
@@ -56,6 +58,33 @@ async function initCesium() {
 
     // Initialize Cesium Viewer with disabled default UI for tactical look
     Cesium.Ion.defaultAccessToken = window.CESIUM_ACCESS_TOKEN || ''; 
+
+    // Terrain: World Terrain if token available, else flat ellipsoid
+    let terrainProvider;
+    try {
+        if (window.CESIUM_ACCESS_TOKEN) {
+            terrainProvider = await Cesium.createWorldTerrainAsync();
+        } else {
+            console.warn('[3D] No Cesium Ion token - using flat terrain.');
+            terrainProvider = new Cesium.EllipsoidTerrainProvider();
+        }
+    } catch (e) {
+        console.warn('[3D] Terrain load failed, using flat terrain:', e.message);
+        terrainProvider = new Cesium.EllipsoidTerrainProvider();
+    }
+
+    // Imagery: ArcGIS World Imagery (no token required)
+    let imageryProvider;
+    try {
+        imageryProvider = await Cesium.ArcGisMapServerImageryProvider.fromUrl(
+            'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'
+        );
+    } catch (e) {
+        console.warn('[3D] ArcGIS imagery failed, using bundled fallback:', e.message);
+        imageryProvider = new Cesium.TileMapServiceImageryProvider({
+            url: Cesium.buildModuleUrl('Assets/Textures/NaturalEarthII')
+        });
+    }
 
     viewer = new Cesium.Viewer('satellite-map', {
         animation: false,
@@ -72,10 +101,8 @@ async function initCesium() {
         navigationInstructionsInitiallyVisible: false,
         requestRenderMode: true, // Optimize performance
         maximumRenderTimeChange: Infinity,
-        terrainProvider: await Cesium.createWorldTerrainAsync(),
-        imageryProvider: new Cesium.ArcGisMapServerImageryProvider({
-            url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'
-        })
+        terrainProvider: terrainProvider,
+        imageryProvider: imageryProvider
     });
 
     try {
