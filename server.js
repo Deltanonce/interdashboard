@@ -39,7 +39,7 @@ const helmetHandler = helmet({
             "script-src-attr": ["'unsafe-inline'"],
             "img-src": ["'self'", "data:", "https:", "blob:"],
             "media-src": ["*"],
-            "frame-src": ["'self'", "https://www.youtube.com", "https://youtube.com"],
+            "frame-src": ["'self'", "https://www.youtube.com", "https://youtube.com", "https://www.youtube-nocookie.com"],
             "worker-src": ["'self'", "blob:"],
             "connect-src": [
                 "'self'",
