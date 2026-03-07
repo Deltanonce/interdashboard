@@ -315,20 +315,39 @@ async function loadSatelliteData() {
 function addSatelliteEntity(name, satrec) {
     const id = 'sat_' + name.replace(/\s+/g, '_');
     
+    // Cache last known good position so tracking is never lost
+    let lastGoodPosition = Cesium.Cartesian3.fromDegrees(0, 0, 400000);
+
     const entity = viewer.entities.add({
         id: id,
         name: name,
         description: 'Orbital Reconnaissance Asset',
         position: new CallbackPositionProperty((time, result) => {
-            const jsDate = Cesium.JulianDate.toDate(time);
-            const positionAndVelocity = satellite.propagate(satrec, jsDate);
-            if (!positionAndVelocity.position) return undefined;
-            const positionGd = satellite.eciToGeodetic(positionAndVelocity.position, satellite.gstime(jsDate));
-            
-            // Proximity logic for Intelligence Buffer
-            checkProximity(id, positionGd);
-            
-            return Cesium.Cartesian3.fromRadians(positionGd.longitude, positionGd.latitude, positionGd.height * 1000, viewer.scene.globe.ellipsoid, result);
+            try {
+                const jsDate = Cesium.JulianDate.toDate(time);
+                const positionAndVelocity = satellite.propagate(satrec, jsDate);
+                if (!positionAndVelocity.position) return lastGoodPosition;
+                const gmst = satellite.gstime(jsDate);
+                const positionGd = satellite.eciToGeodetic(positionAndVelocity.position, gmst);
+                
+                // Validate geodetic values
+                if (isNaN(positionGd.longitude) || isNaN(positionGd.latitude) || isNaN(positionGd.height)) {
+                    return lastGoodPosition;
+                }
+
+                // Proximity logic for Intelligence Buffer
+                checkProximity(id, positionGd);
+                
+                const pos = Cesium.Cartesian3.fromRadians(
+                    positionGd.longitude, positionGd.latitude,
+                    positionGd.height * 1000,
+                    viewer.scene.globe.ellipsoid, result
+                );
+                lastGoodPosition = pos;
+                return pos;
+            } catch (e) {
+                return lastGoodPosition;
+            }
         }, false),
         point: {
             pixelSize: 4,
@@ -560,7 +579,26 @@ function setupInteraction() {
 function enterOrbitalView(entity) {
     orbitalViewActive = true;
     followedEntity = entity;
-    viewer.trackedEntity = entity;
+
+    // Fly to the entity with appropriate offset instead of just setting trackedEntity,
+    // which avoids the camera snapping away at large zoom distances.
+    const pos = entity.position?.getValue(viewer.clock.currentTime);
+    if (pos) {
+        viewer.camera.flyTo({
+            destination: pos,
+            orientation: {
+                heading: Cesium.Math.toRadians(0),
+                pitch: Cesium.Math.toRadians(-30),
+                roll: 0
+            },
+            duration: 1.5,
+            complete: () => {
+                viewer.trackedEntity = entity;
+            }
+        });
+    } else {
+        viewer.trackedEntity = entity;
+    }
     
     // Play sound
     scanSound.currentTime = 0;
@@ -578,6 +616,7 @@ function exitOrbitalView() {
     if (orbitalViewActive) {
         orbitalViewActive = false;
         viewer.trackedEntity = undefined;
+        viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
         followedEntity = null;
         window.speakIntelligence("Orbital link detached. Returning to strategic overview.");
     }

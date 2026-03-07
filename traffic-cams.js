@@ -39,10 +39,12 @@ class TrafficCameraSystem {
             const data = await res.json();
             if (Array.isArray(data) && data.length > 0) {
                 this.cameras = this._normalizeCameras(data);
-                console.log(`[TRAFFIC-CAM] Loaded ${this.cameras.length} Austin cameras via proxy`);
-                return this.cameras;
+                if (this.cameras.length > 0) {
+                    console.log(`[TRAFFIC-CAM] Loaded ${this.cameras.length} Austin cameras via proxy`);
+                    return this.cameras;
+                }
             }
-            throw new Error('Empty response from proxy');
+            throw new Error('Empty or unparseable response from proxy');
         } catch (e) {
             console.warn('[TRAFFIC-CAM] Proxy failed:', e.message, '— trying direct fetch');
         }
@@ -69,18 +71,31 @@ class TrafficCameraSystem {
 
     _normalizeCameras(data) {
         return data
-            .filter(c => c.location_latitude && c.location_longitude)
+            .filter(c => {
+                // Austin API uses GeoJSON: location.coordinates = [lon, lat]
+                if (c.location && c.location.coordinates) return true;
+                if (c.location_latitude && c.location_longitude) return true;
+                return false;
+            })
             .map((c, i) => {
                 const id = c.camera_id || `cam_${i}`;
+                let lat, lon;
+                if (c.location && c.location.coordinates) {
+                    lon = parseFloat(c.location.coordinates[0]);
+                    lat = parseFloat(c.location.coordinates[1]);
+                } else {
+                    lat = parseFloat(c.location_latitude);
+                    lon = parseFloat(c.location_longitude);
+                }
                 return {
                     id,
-                    name: c.location_name || c.camera_name || `Camera ${i}`,
-                    lat: parseFloat(c.location_latitude),
-                    lon: parseFloat(c.location_longitude),
+                    name: (c.location_name || c.camera_name || `Camera ${i}`).trim(),
+                    lat,
+                    lon,
                     status: c.camera_status || 'UNKNOWN',
-                    imageUrl: c.camera_mfg_url || c.screenshot_address || null,
+                    imageUrl: c.screenshot_address || c.camera_mfg_url || null,
                     turn: c.turn_on_date || null,
-                    type: c.primary_st_segment_id ? 'INTERSECTION' : 'CORRIDOR',
+                    type: c.location_type || (c.primary_st_segment_id ? 'INTERSECTION' : 'CORRIDOR'),
                     signal: c.signal_eng_area || null,
                     council: c.council_district || null
                 };

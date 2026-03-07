@@ -56,7 +56,8 @@ const helmetHandler = helmet({
                 "https://*.virtualearth.net",
                 "https://*.bing.com",
                 "https://data.austintexas.gov",
-                "https://its.txdot.gov"
+                "https://its.txdot.gov",
+                "https://cctv.austinmobility.io"
             ]
         }
     }
