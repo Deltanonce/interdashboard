@@ -66,7 +66,7 @@ window.initMap = async function() {
             fullscreenButton: false
         });
 
-        viewer.scene.globe.depthTestAgainstTerrain = true;
+        viewer.scene.globe.depthTestAgainstTerrain = false;
         viewer.cesiumWidget.creditContainer.style.display = 'none';
 
         is3DMode = true;
@@ -344,6 +344,28 @@ async function notifyServerProximity(satId, targetHex) {
     } catch(e) {}
 }
 
+// --- SVG Billboard Generators (lightweight 3D-look assets) ---
+function createAircraftSvg(color = '#ff4757', heading = 0) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+      <g transform="rotate(${heading}, 24, 24)">
+        <path d="M24 4 L28 20 L42 26 L28 28 L30 42 L24 36 L18 42 L20 28 L6 26 L20 20 Z"
+              fill="${color}" fill-opacity="0.85" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/>
+        <circle cx="24" cy="22" r="2.5" fill="#fff" fill-opacity="0.9"/>
+      </g>
+    </svg>`;
+    return 'data:image/svg+xml;base64,' + btoa(svg);
+}
+
+function createShipSvg(color = '#2ed573') {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+      <path d="M20 6 L28 16 L32 30 L26 34 L14 34 L8 30 L12 16 Z"
+            fill="${color}" fill-opacity="0.8" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>
+      <line x1="20" y1="8" x2="20" y2="28" stroke="#fff" stroke-width="0.8" opacity="0.6"/>
+      <circle cx="20" cy="20" r="2" fill="#fff" fill-opacity="0.8"/>
+    </svg>`;
+    return 'data:image/svg+xml;base64,' + btoa(svg);
+}
+
 // --- Live Asset Layer (ADS-B & AIS in 3D) ---
 window.addOrUpdateLiveAsset = function (asset) {
     if (!viewer) {
@@ -367,11 +389,12 @@ window.addOrUpdateLiveAsset = function (asset) {
     const position = Cesium.Cartesian3.fromDegrees(asset.lon, asset.lat, altitude);
     
     // ── DYNAMIC COLORING BASED ON VALIDATION ──
-    let color = asset._source === 'adsb' ? Cesium.Color.RED : Cesium.Color.LIME;
+    const isAircraft = asset._source === 'adsb';
+    let colorHex = isAircraft ? '#ff4757' : '#2ed573';
     let labelSuffix = '';
 
     if (asset._source === 'ais' && asset.classification) {
-        color = Cesium.Color.fromCssColorString(asset.classification.color);
+        colorHex = asset.classification.color || '#2ed573';
         labelSuffix = ` ${asset.classification.icon}`;
         if (asset.classification.finalThreatLevel === 'high' || asset.classification.finalThreatLevel === 'critical') {
             labelSuffix += ` [${asset.classification.finalThreatLevel.toUpperCase()}]`;
@@ -380,64 +403,57 @@ window.addOrUpdateLiveAsset = function (asset) {
 
     if (asset.validation) {
         if (!asset.validation.valid) {
-            color = Cesium.Color.fromCssColorString('#ffb000'); // Amber for anomaly
+            colorHex = '#ffb000';
             labelSuffix += ' [ANOMALY]';
         } else if (asset.validation.warnings && asset.validation.warnings.length > 0) {
-            color = Cesium.Color.RED;
+            colorHex = '#ff0000';
             labelSuffix += ` [${asset.validation.warnings[0].meaning}]`;
         }
     }
+
+    const heading = asset.heading || 0;
 
     if (liveMarkerRefs[asset.id]) {
         const ref = liveMarkerRefs[asset.id];
         ref.latestAsset = asset;
         ref.entity.position = position;
         
-        // Update point color
-        if (ref.entity.point) ref.entity.point.color = color;
-        if (ref.entity.label) ref.entity.label.text = (asset.callsign || asset.hex || 'UNK') + labelSuffix;
-        
-        // Update orientation if heading available
-        if (asset.heading) {
-            const hpr = new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(asset.heading - 90), 0, 0);
-            const orientation = Cesium.Transforms.headingPitchRollQuaternion(position, hpr);
-            ref.entity.orientation = orientation;
+        // Update billboard with new heading/color
+        if (ref.entity.billboard) {
+            ref.entity.billboard.image = isAircraft
+                ? createAircraftSvg(colorHex, heading)
+                : createShipSvg(colorHex);
         }
+        if (ref.entity.label) ref.entity.label.text = (asset.callsign || asset.hex || 'UNK') + labelSuffix;
 
     } else {
-        const isAircraft = asset._source === 'adsb';
         const entityConfig = {
             id: asset.id,
             position: position,
-            // Always-visible point marker that scales properly at any zoom
-            point: {
-                pixelSize: isAircraft ? 10 : 8,
-                color: color,
-                outlineColor: Cesium.Color.WHITE,
-                outlineWidth: 2,
+            billboard: {
+                image: isAircraft ? createAircraftSvg(colorHex, heading) : createShipSvg(colorHex),
+                width: isAircraft ? 32 : 24,
+                height: isAircraft ? 32 : 24,
                 heightReference: isAircraft ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
                 disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                scaleByDistance: new Cesium.NearFarScalar(1e3, 1.5, 1e7, 0.5)
+                scaleByDistance: new Cesium.NearFarScalar(5e4, 1.2, 1.5e7, 0.35),
+                verticalOrigin: Cesium.VerticalOrigin.CENTER,
+                horizontalOrigin: Cesium.HorizontalOrigin.CENTER
             },
             label: {
                 text: (asset.callsign || asset.hex || 'UNK') + labelSuffix,
-                font: '11pt monospace',
+                font: '11px monospace',
                 style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                fillColor: isAircraft ? Cesium.Color.fromCssColorString('#ff4757') : Cesium.Color.fromCssColorString('#2ed573'),
+                fillColor: Cesium.Color.fromCssColorString(colorHex),
                 outlineColor: Cesium.Color.BLACK,
                 outlineWidth: 3,
                 verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-                pixelOffset: new Cesium.Cartesian2(0, -14),
+                pixelOffset: new Cesium.Cartesian2(0, -18),
                 disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                scaleByDistance: new Cesium.NearFarScalar(1e3, 1.0, 1e7, 0.4),
-                distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 8000000)
+                scaleByDistance: new Cesium.NearFarScalar(5e4, 0.9, 1.5e7, 0.3),
+                distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 6000000)
             }
         };
-
-        if (asset.heading) {
-            const hpr = new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(asset.heading - 90), 0, 0);
-            entityConfig.orientation = Cesium.Transforms.headingPitchRollQuaternion(position, hpr);
-        }
 
         const entity = viewer.entities.add(entityConfig);
         liveMarkerRefs[asset.id] = { entity, latestAsset: asset, source: asset._source };
@@ -475,19 +491,21 @@ function createSvgDataUri(source, color) {
 function setupInteraction() {
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
     
-    // Left click to enter Orbital View or show profile
+    // Double click to enter Orbital View (satellites only)
     handler.setInputAction(function (click) {
         const pickedObject = viewer.scene.pick(click.position);
         if (Cesium.defined(pickedObject) && pickedObject.id) {
             const entity = pickedObject.id;
-            
-            // Check if it's a satellite
             if (satelliteEntities[entity.id]) {
                 enterOrbitalView(entity);
-            } else if (liveMarkerRefs[entity.id]) {
-                // Try to show threat profile
             }
-        } else {
+        }
+    }, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+
+    // Single left click — exit orbital view if active (restores normal panning)
+    handler.setInputAction(function (click) {
+        const pickedObject = viewer.scene.pick(click.position);
+        if (!Cesium.defined(pickedObject) || !pickedObject.id) {
             exitOrbitalView();
         }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
