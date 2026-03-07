@@ -300,15 +300,19 @@ function addSatelliteEntity(name, satrec) {
             outlineColor: Cesium.Color.WHITE,
             outlineWidth: 1
         },
-        path: {
-            resolution: 1,
-            material: new Cesium.PolylineGlowMaterialProperty({
-                glowPower: 0.1,
-                color: Cesium.Color.CYAN.withAlpha(0.3)
-            }),
-            width: 2,
-            leadTime: 0,
-            trailTime: 60 * 45 // 45 minutes trail
+        // path removed: CallbackProperty does not implement getValueInReferenceFrame
+        // which causes a fatal rendering crash in CesiumJS 1.116+
+        label: {
+            text: name,
+            font: '10px monospace',
+            fillColor: Cesium.Color.CYAN,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 2,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            pixelOffset: new Cesium.Cartesian2(8, 0),
+            scale: 0.6,
+            showBackground: false,
+            show: false  // hidden by default, toggled on hover/selection
         }
     });
     

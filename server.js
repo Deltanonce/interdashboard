@@ -35,7 +35,8 @@ const helmetHandler = helmet({
     contentSecurityPolicy: {
         directives: {
             ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-            "script-src": ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'", "https://cdnjs.cloudflare.com", "https://cesium.com"],
+            "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'", "'wasm-unsafe-eval'", "blob:", "https://cdnjs.cloudflare.com", "https://cesium.com", "https://dev.virtualearth.net"],
+            "script-src-attr": ["'unsafe-inline'"],
             "img-src": ["'self'", "data:", "https:", "blob:"],
             "media-src": ["*"],
             "worker-src": ["'self'", "blob:"],
@@ -48,7 +49,12 @@ const helmetHandler = helmet({
                 "https://iserver.arcgisonline.com",
                 "https://api.cesium.com",
                 "https://assets.ion.cesium.com",
-                "https://ion.cesium.com"
+                "https://assets.cesium.com",
+                "https://ion.cesium.com",
+                "https://cesium.com",
+                "https://dev.virtualearth.net",
+                "https://*.virtualearth.net",
+                "https://*.bing.com"
             ]
         }
     }
