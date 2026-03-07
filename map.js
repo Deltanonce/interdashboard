@@ -346,7 +346,10 @@ async function notifyServerProximity(satId, targetHex) {
 
 // --- Live Asset Layer (ADS-B & AIS in 3D) ---
 window.addOrUpdateLiveAsset = function (asset) {
-    if (!viewer) return;
+    if (!viewer) {
+        console.warn('[MAP] addOrUpdateLiveAsset called but viewer is null');
+        return;
+    }
     
     if (typeof updateTelemetrySidebar === 'function') {
         updateTelemetrySidebar(asset);
@@ -380,7 +383,7 @@ window.addOrUpdateLiveAsset = function (asset) {
             color = Cesium.Color.fromCssColorString('#ffb000'); // Amber for anomaly
             labelSuffix += ' [ANOMALY]';
         } else if (asset.validation.warnings && asset.validation.warnings.length > 0) {
-            color = Cesium.Color.RED; // Force Red for emergency squawks
+            color = Cesium.Color.RED;
             labelSuffix += ` [${asset.validation.warnings[0].meaning}]`;
         }
     }
@@ -390,10 +393,8 @@ window.addOrUpdateLiveAsset = function (asset) {
         ref.latestAsset = asset;
         ref.entity.position = position;
         
-        // Update color and label
-        if (ref.entity.cylinder) ref.entity.cylinder.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.6));
-        if (ref.entity.box) ref.entity.box.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.6));
-        if (ref.entity.billboard) ref.entity.billboard.image = createSvgDataUri(asset._source, asset.classification?.color || (asset._source === 'adsb' ? '#ff4757' : '#2ed573'));
+        // Update point color
+        if (ref.entity.point) ref.entity.point.color = color;
         if (ref.entity.label) ref.entity.label.text = (asset.callsign || asset.hex || 'UNK') + labelSuffix;
         
         // Update orientation if heading available
@@ -404,40 +405,38 @@ window.addOrUpdateLiveAsset = function (asset) {
         }
 
     } else {
+        const isAircraft = asset._source === 'adsb';
         const entityConfig = {
             id: asset.id,
             position: position,
-            label: {
-                text: asset.callsign || asset.hex || 'UNK',
-                font: '10pt monospace',
-                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            // Always-visible point marker that scales properly at any zoom
+            point: {
+                pixelSize: isAircraft ? 10 : 8,
+                color: color,
+                outlineColor: Cesium.Color.WHITE,
                 outlineWidth: 2,
-                verticalOrigin: Cesium.VerticalOrigin.TOP,
-                pixelOffset: new Cesium.Cartesian2(0, 15),
-                distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 5000000)
+                heightReference: isAircraft ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                scaleByDistance: new Cesium.NearFarScalar(1e3, 1.5, 1e7, 0.5)
+            },
+            label: {
+                text: (asset.callsign || asset.hex || 'UNK') + labelSuffix,
+                font: '11pt monospace',
+                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                fillColor: isAircraft ? Cesium.Color.fromCssColorString('#ff4757') : Cesium.Color.fromCssColorString('#2ed573'),
+                outlineColor: Cesium.Color.BLACK,
+                outlineWidth: 3,
+                verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                pixelOffset: new Cesium.Cartesian2(0, -14),
+                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                scaleByDistance: new Cesium.NearFarScalar(1e3, 1.0, 1e7, 0.4),
+                distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 8000000)
             }
         };
 
         if (asset.heading) {
             const hpr = new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(asset.heading - 90), 0, 0);
             entityConfig.orientation = Cesium.Transforms.headingPitchRollQuaternion(position, hpr);
-        }
-
-        if (asset._source === 'adsb') {
-            // Render as 3D Glowing Pyramid (Cylinder with top radius 0)
-            entityConfig.cylinder = {
-                length: 2000.0, // 2km high pyramid
-                topRadius: 0.0,
-                bottomRadius: 1000.0, // 1km base
-                material: new Cesium.ColorMaterialProperty(Cesium.Color.RED.withAlpha(0.6))
-            };
-        } else {
-            // Render as 3D Hull on water surface (Box)
-            entityConfig.box = {
-                dimensions: new Cesium.Cartesian3(500.0, 1500.0, 500.0), // Box dimensions
-                material: new Cesium.ColorMaterialProperty(Cesium.Color.LIME.withAlpha(0.6)),
-                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
-            };
         }
 
         const entity = viewer.entities.add(entityConfig);

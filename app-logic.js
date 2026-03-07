@@ -230,13 +230,11 @@ async function runBootSequence() {
     simulateRefresh(true).catch(e => { hideLoadingOverlay(); });
 }
 
-async function waitForMapBridgeReady(timeoutMs = 4000) {
+async function waitForMapBridgeReady(timeoutMs = 15000) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-        const mapContainer = document.getElementById('satellite-map');
-        const trackerReady = typeof window.AssetTracker !== 'undefined';
-        if (mapContainer && typeof window.addOrUpdateLiveAsset === 'function' && trackerReady) return;
-        await sleep(100);
+        if (window.viewer && typeof window.addOrUpdateLiveAsset === 'function') return;
+        await sleep(200);
     }
     throw new Error('map-bridge-timeout');
 }
