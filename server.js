@@ -55,10 +55,7 @@ const helmetHandler = helmet({
                 "https://cesium.com",
                 "https://dev.virtualearth.net",
                 "https://*.virtualearth.net",
-                "https://*.bing.com",
-                "https://data.austintexas.gov",
-                "https://its.txdot.gov",
-                "https://cctv.austinmobility.io"
+                "https://*.bing.com"
             ]
         }
     }
@@ -237,6 +234,133 @@ function logBriefing(ac) {
               });
         }
     }
+}
+
+// ── YOUTUBE LIVE STREAM RESOLVER ──
+// Resolves a YouTube channel ID to the current live video ID by scraping the channel's live page.
+// Results are cached for 30 minutes to avoid excessive requests.
+const _ytStreamCache = new Map(); // channelId → { videoId, ts }
+const YT_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+function resolveYouTubeStream(req, res) {
+    const parsed = new URL(req.url, `http://localhost:${PORT}`);
+    const channelId = parsed.searchParams.get('channel');
+
+    if (!channelId || !/^UC[\w-]{22}$/.test(channelId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: 'Invalid or missing channel parameter. Must be a YouTube channel ID (UC...)' }));
+        return;
+    }
+
+    // Check cache
+    const cached = _ytStreamCache.get(channelId);
+    if (cached && (Date.now() - cached.ts) < YT_CACHE_TTL) {
+        console.log(`[YT-RESOLVE] Cache hit for ${channelId}: ${cached.videoId || 'NO_STREAM'}`);
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ channelId, videoId: cached.videoId, cached: true, live: !!cached.videoId }));
+        return;
+    }
+
+    // Fetch the channel's live page
+    const ytUrl = `https://www.youtube.com/channel/${channelId}/live`;
+    console.log(`[YT-RESOLVE] Fetching live page for channel ${channelId}`);
+
+    const ytReq = https.request(ytUrl, {
+        method: 'GET',
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml'
+        },
+        timeout: 10000
+    }, (ytRes) => {
+        // Handle redirects (YouTube often redirects /live to the actual video URL)
+        if (ytRes.statusCode >= 300 && ytRes.statusCode < 400 && ytRes.headers.location) {
+            const location = ytRes.headers.location;
+            const vidMatch = location.match(/[?&]v=([A-Za-z0-9_-]{11})/);
+            if (vidMatch) {
+                const videoId = vidMatch[1];
+                _ytStreamCache.set(channelId, { videoId, ts: Date.now() });
+                console.log(`[YT-RESOLVE] Redirect resolved: ${channelId} → ${videoId}`);
+                ytRes.resume(); // Drain the response body
+                res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                res.end(JSON.stringify({ channelId, videoId, cached: false, live: true }));
+                return;
+            }
+        }
+
+        const chunks = [];
+        let totalLength = 0;
+        ytRes.on('data', chunk => {
+            totalLength += chunk.length;
+            if (totalLength < 2 * 1024 * 1024) { // Max 2MB
+                chunks.push(chunk);
+            }
+        });
+        ytRes.on('end', () => {
+            const html = Buffer.concat(chunks).toString('utf8');
+            let videoId = null;
+
+            // Method 1: Look for canonical URL with video ID
+            const canonMatch = html.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([A-Za-z0-9_-]{11})"/);
+            if (canonMatch) {
+                videoId = canonMatch[1];
+            }
+
+            // Method 2: Look for "isLive":true near a videoId in ytInitialPlayerResponse
+            if (!videoId) {
+                const playerMatch = html.match(/"videoId":"([A-Za-z0-9_-]{11})"[^}]*"isLive"\s*:\s*true/);
+                if (playerMatch) {
+                    videoId = playerMatch[1];
+                }
+            }
+
+            // Method 3: Look for videoId in ytInitialData with isLiveNow
+            if (!videoId) {
+                const dataMatch = html.match(/"videoId"\s*:\s*"([A-Za-z0-9_-]{11})".*?"isLiveNow"\s*:\s*true/s);
+                if (dataMatch) {
+                    videoId = dataMatch[1];
+                }
+            }
+
+            // Method 4: Broad search for any videoId on the page (less reliable)
+            if (!videoId) {
+                const broadMatch = html.match(/"videoId"\s*:\s*"([A-Za-z0-9_-]{11})"/);
+                if (broadMatch) {
+                    videoId = broadMatch[1];
+                }
+            }
+
+            _ytStreamCache.set(channelId, { videoId, ts: Date.now() });
+
+            if (videoId) {
+                console.log(`[YT-RESOLVE] Resolved: ${channelId} → ${videoId}`);
+            } else {
+                console.warn(`[YT-RESOLVE] No live stream found for channel ${channelId}`);
+            }
+
+            res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ channelId, videoId, cached: false, live: !!videoId }));
+        });
+    });
+
+    ytReq.on('timeout', () => {
+        ytReq.destroy();
+        console.error(`[YT-RESOLVE] Timeout fetching channel ${channelId}`);
+        // Cache the failure briefly (5 min) to avoid hammering
+        _ytStreamCache.set(channelId, { videoId: null, ts: Date.now() - YT_CACHE_TTL + 5 * 60 * 1000 });
+        res.writeHead(504, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: 'YouTube request timed out', channelId, videoId: null, live: false }));
+    });
+
+    ytReq.on('error', (err) => {
+        console.error(`[YT-RESOLVE] Error fetching channel ${channelId}: ${err.message}`);
+        _ytStreamCache.set(channelId, { videoId: null, ts: Date.now() - YT_CACHE_TTL + 5 * 60 * 1000 });
+        res.writeHead(502, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: 'Failed to reach YouTube', channelId, videoId: null, live: false }));
+    });
+
+    ytReq.end();
 }
 
 function proxyTrafficCams(req, res) {
@@ -642,7 +766,8 @@ function getDocs(req, res) {
             { path: '/api/adsb-mil', method: 'GET', description: 'ADS-B military proxy' },
             { path: '/api/ais-poll', method: 'GET', description: 'AIS maritime telemetry relay' },
             { path: '/api/briefings-list', method: 'GET', description: 'List historical strategic reports' },
-            { path: '/api/generate-briefing', method: 'POST', description: 'Manual briefing trigger' }
+            { path: '/api/generate-briefing', method: 'POST', description: 'Manual briefing trigger' },
+            { path: '/api/resolve-stream', method: 'GET', description: 'Resolve YouTube channel ID to current live video ID (param: channel)' }
         ]
     };
     res.writeHead(200, { 
@@ -713,6 +838,7 @@ const server = http.createServer((req, res) => {
             if (url === '/api/generate-report') return generateReport(req, res);
             if (url === '/api/proximity-alert') return handleProximityAlert(req, res);
             if (url === '/api/traffic-cams') return proxyTrafficCams(req, res);
+            if (url === '/api/resolve-stream') return resolveYouTubeStream(req, res);
 
             // Serve empty favicon to suppress browser 404
             if (url === '/favicon.ico') {

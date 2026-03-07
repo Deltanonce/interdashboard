@@ -5,6 +5,8 @@ const REFRESH_INTERVAL = 30000;
 
 // Feed types: 'image' (auto-refresh JPEG), 'stream' (embedded live player), 'tactical' (simulated ISR overlay)
 // All cameras reference publicly available OSINT webcam sources
+// For 'stream' type: channelId stores a permanent YouTube channel ID.
+// The server-side resolver (/api/resolve-stream) dynamically fetches the current live video ID.
 
 // ─── STRATEGIC CAMERA DATABASE ───
 // Curated positions at critical infrastructure, chokepoints, and conflict-adjacent areas.
@@ -17,12 +19,12 @@ const MIDDLE_EAST_CAMERAS = [
     { id: 'ME004', name: 'Bab el-Mandeb — Perim Island', lat: 12.6550, lon: 43.4200, status: 'ACTIVE', type: 'CHOKEPOINT', region: 'YEMEN', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
 
     // ── TURKEY / BOSPHORUS ──
-    { id: 'ME005', name: 'Istanbul — Bosphorus Bridge', lat: 41.0451, lon: 29.0343, status: 'ACTIVE', type: 'STRATEGIC', region: 'TURKEY', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/cPI7VCsgZXE?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
-    { id: 'ME006', name: 'Istanbul — Galata Tower', lat: 41.0256, lon: 28.9744, status: 'ACTIVE', type: 'URBAN', region: 'TURKEY', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/VJxs6MCP-D4?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME005', name: 'Istanbul — Bosphorus Bridge', lat: 41.0451, lon: 29.0343, status: 'ACTIVE', type: 'STRATEGIC', region: 'TURKEY', feedType: 'stream', feedUrl: null, channelId: 'UCE4yVI0baxDHg3OkMJ1ogLg', classification: 'UNCLASSIFIED' },
+    { id: 'ME006', name: 'Istanbul — Galata Tower', lat: 41.0256, lon: 28.9744, status: 'ACTIVE', type: 'URBAN', region: 'TURKEY', feedType: 'stream', feedUrl: null, channelId: 'UC7hJm7aOqXMJhOEcxMIkBCQ', classification: 'UNCLASSIFIED' },
     { id: 'ME007', name: 'Incirlik AB — Perimeter Approach', lat: 37.0021, lon: 35.4259, status: 'ACTIVE', type: 'MILITARY', region: 'TURKEY', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
 
     // ── UAE / GULF STATES ──
-    { id: 'ME008', name: 'Dubai — Sheikh Zayed Road', lat: 25.2048, lon: 55.2708, status: 'ACTIVE', type: 'INFRASTRUCTURE', region: 'UAE', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/SzmJE31rYMw?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME008', name: 'Dubai — Sheikh Zayed Road', lat: 25.2048, lon: 55.2708, status: 'ACTIVE', type: 'INFRASTRUCTURE', region: 'UAE', feedType: 'stream', feedUrl: null, channelId: 'UCuhs6RMNqOZvBJyjloP-bYA', classification: 'UNCLASSIFIED' },
     { id: 'ME009', name: 'Dubai — Jebel Ali Port', lat: 25.0145, lon: 55.0640, status: 'ACTIVE', type: 'PORT', region: 'UAE', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
     { id: 'ME010', name: 'Abu Dhabi — Al Dhafra AB Approach', lat: 24.2500, lon: 54.5500, status: 'ACTIVE', type: 'MILITARY', region: 'UAE', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
     { id: 'ME011', name: 'Doha — Al Udeid AB Perimeter', lat: 25.1173, lon: 51.3150, status: 'ACTIVE', type: 'MILITARY', region: 'QATAR', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
@@ -31,7 +33,7 @@ const MIDDLE_EAST_CAMERAS = [
     // ── SAUDI ARABIA ──
     { id: 'ME013', name: 'Riyadh — King Fahd Road', lat: 24.7136, lon: 46.6753, status: 'ACTIVE', type: 'INFRASTRUCTURE', region: 'SAUDI', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
     { id: 'ME014', name: 'Jeddah — Islamic Port', lat: 21.4858, lon: 39.1925, status: 'ACTIVE', type: 'PORT', region: 'SAUDI', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
-    { id: 'ME015', name: 'Mecca — Grand Mosque Perimeter', lat: 21.4225, lon: 39.8262, status: 'ACTIVE', type: 'CRITICAL', region: 'SAUDI', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/j-6Gklz5kLY?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME015', name: 'Mecca — Grand Mosque Perimeter', lat: 21.4225, lon: 39.8262, status: 'ACTIVE', type: 'CRITICAL', region: 'SAUDI', feedType: 'stream', feedUrl: null, channelId: 'UCbkAdsxSnoMEu5gxRFxnm2A', classification: 'UNCLASSIFIED' },
 
     // ── CONFLICT ZONES ──
     { id: 'ME016', name: 'Baghdad — Green Zone', lat: 33.3120, lon: 44.3615, status: 'ACTIVE', type: 'CONFLICT', region: 'IRAQ', feedType: 'tactical', feedUrl: null, classification: 'TOP SECRET' },
@@ -44,9 +46,9 @@ const MIDDLE_EAST_CAMERAS = [
     { id: 'ME023', name: 'Hodeidah — Port Facility', lat: 14.7980, lon: 42.9540, status: 'DEGRADED', type: 'CONFLICT', region: 'YEMEN', feedType: 'tactical', feedUrl: null, classification: 'TOP SECRET' },
 
     // ── ISRAEL / LEVANT ──
-    { id: 'ME024', name: 'Tel Aviv — Azrieli Skyline', lat: 32.0740, lon: 34.7920, status: 'ACTIVE', type: 'URBAN', region: 'ISRAEL', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/8ZA4GRNdu_0?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME024', name: 'Tel Aviv — Azrieli Skyline', lat: 32.0740, lon: 34.7920, status: 'ACTIVE', type: 'URBAN', region: 'ISRAEL', feedType: 'stream', feedUrl: null, channelId: 'UC2xGJkIxr81YEH0GkRzllAg', classification: 'UNCLASSIFIED' },
     { id: 'ME025', name: 'Haifa — Port and Bay', lat: 32.8191, lon: 34.9983, status: 'ACTIVE', type: 'PORT', region: 'ISRAEL', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
-    { id: 'ME026', name: 'Jerusalem — Old City Walls', lat: 31.7767, lon: 35.2345, status: 'ACTIVE', type: 'CRITICAL', region: 'ISRAEL', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/1x_FGXLGD6Y?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME026', name: 'Jerusalem — Old City Walls', lat: 31.7767, lon: 35.2345, status: 'ACTIVE', type: 'CRITICAL', region: 'ISRAEL', feedType: 'stream', feedUrl: null, channelId: 'UCPFBq4MBBPlMneXLhHIxntg', classification: 'UNCLASSIFIED' },
     { id: 'ME027', name: 'Beirut — Port District', lat: 33.9020, lon: 35.5180, status: 'ACTIVE', type: 'PORT', region: 'LEBANON', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
     { id: 'ME028', name: 'Amman — Downtown / Citadel', lat: 31.9539, lon: 35.9340, status: 'ACTIVE', type: 'URBAN', region: 'JORDAN', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
 
@@ -69,6 +71,7 @@ class TrafficCameraSystem {
         this.popup = null;
         this.popupRefreshTimer = null;
         this._mapClickHandler = null;
+        this._resolvedUrls = {}; // channelId → { videoId, ts }
     }
 
     async loadCameras() {
@@ -193,7 +196,7 @@ class TrafficCameraSystem {
             const statusDot = cam.status === 'ACTIVE'
                 ? '<span class="cam-status cam-online">●</span>'
                 : '<span class="cam-status cam-offline">◐</span>';
-            const hasLiveFeed = cam.feedType === 'stream' && cam.feedUrl;
+            const hasLiveFeed = cam.feedType === 'stream' && (cam.feedUrl || cam.channelId);
             const feedBadge = hasLiveFeed
                 ? '<span class="cam-feed-badge cam-feed-live" title="Live stream available">📺</span>'
                 : '<span class="cam-feed-badge cam-feed-tac" title="Tactical overlay only">🎯</span>';
@@ -253,6 +256,40 @@ class TrafficCameraSystem {
     }
 
     // ═══════════════════════════════════════════
+    //  STREAM URL RESOLVER
+    // ═══════════════════════════════════════════
+
+    async _resolveStreamUrl(cam) {
+        if (!cam.channelId) return null;
+
+        // Check client-side cache (15 min)
+        const cached = this._resolvedUrls[cam.channelId];
+        if (cached && (Date.now() - cached.ts) < 15 * 60 * 1000) {
+            return cached.embedUrl;
+        }
+
+        try {
+            const resp = await fetch(`/api/resolve-stream?channel=${encodeURIComponent(cam.channelId)}`);
+            if (!resp.ok) return null;
+            const data = await resp.json();
+
+            if (data.videoId) {
+                const embedUrl = `https://www.youtube.com/embed/${data.videoId}?autoplay=1&mute=1`;
+                this._resolvedUrls[cam.channelId] = { embedUrl, ts: Date.now() };
+                console.log(`[ISR-RESOLVE] ${cam.id}: channel ${cam.channelId} → video ${data.videoId}`);
+                return embedUrl;
+            }
+
+            console.warn(`[ISR-RESOLVE] ${cam.id}: No live stream found for channel ${cam.channelId}`);
+            this._resolvedUrls[cam.channelId] = { embedUrl: null, ts: Date.now() };
+            return null;
+        } catch (err) {
+            console.error(`[ISR-RESOLVE] ${cam.id}: Resolver error: ${err.message}`);
+            return null;
+        }
+    }
+
+    // ═══════════════════════════════════════════
     //  LIVE VIDEO POPUP
     // ═══════════════════════════════════════════
 
@@ -262,11 +299,36 @@ class TrafficCameraSystem {
 
         const now = new Date();
         const ts = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
-        const isStream = cam.feedType === 'stream' && cam.feedUrl;
-        const isTactical = cam.feedType === 'tactical' || !cam.feedUrl;
+        // Determine if this camera has a resolved stream URL or a static feedUrl
+        const hasStreamUrl = cam.feedType === 'stream' && cam.feedUrl;
+        const needsResolve = cam.feedType === 'stream' && cam.channelId && !cam.feedUrl;
+        const isStream = hasStreamUrl || needsResolve;
+        const isTactical = cam.feedType === 'tactical' || (!cam.feedUrl && !cam.channelId);
         const latDir = cam.lat >= 0 ? 'N' : 'S';
         const lonDir = cam.lon >= 0 ? 'E' : 'W';
         const classColor = { 'UNCLASSIFIED': '#00ff41', 'RESTRICTED': '#ffe132', 'SECRET': '#ff9100', 'TOP SECRET': '#ff2244' }[cam.classification] || '#00e5ff';
+
+        // Build the initial feed content
+        let feedContent;
+        if (hasStreamUrl) {
+            feedContent = `<iframe src="${cam.feedUrl}" class="cctv-feed-iframe" id="cctv-feed-iframe" allow="autoplay; encrypted-media" allowfullscreen frameborder="0"></iframe>`;
+        } else if (needsResolve) {
+            // Show loading state while resolving
+            feedContent = `<div class="cctv-tactical-feed" id="cctv-stream-loading">
+                <div class="cctv-static-noise"></div>
+                <div class="cctv-tactical-grid"></div>
+                <div class="cctv-tactical-center">
+                    <div class="cctv-tactical-icon" style="animation: pulse 1s infinite">⟳</div>
+                    <div class="cctv-tactical-label" style="color:#00e5ff">RESOLVING LIVE STREAM</div>
+                    <div class="cctv-tactical-sublabel">Connecting to OSINT source...</div>
+                    <div class="cctv-tactical-status" style="color:#ffe132">■ CHANNEL: ${this._escapeHtml(cam.channelId)}</div>
+                </div>
+            </div>`;
+        } else if (isTactical) {
+            feedContent = this._buildTacticalOverlay(cam, ts);
+        } else {
+            feedContent = `<img src="${cam.feedUrl}" alt="${this._escapeHtml(cam.name)}" class="cctv-feed-img" id="cctv-feed-img" />`;
+        }
 
         const overlay = document.createElement('div');
         overlay.id = 'cctv-popup-overlay';
@@ -288,12 +350,7 @@ class TrafficCameraSystem {
                 </div>
                 <div class="cctv-popup-body">
                     <div class="cctv-feed-container" id="cctv-feed-container">
-                        ${isStream
-                            ? `<iframe src="${cam.feedUrl}" class="cctv-feed-iframe" id="cctv-feed-iframe" allow="autoplay; encrypted-media" allowfullscreen frameborder="0"></iframe>`
-                            : isTactical
-                                ? this._buildTacticalOverlay(cam, ts)
-                                : `<img src="${cam.feedUrl}" alt="${this._escapeHtml(cam.name)}" class="cctv-feed-img" id="cctv-feed-img" />`
-                        }
+                        ${feedContent}
                         <div class="cctv-feed-hud">
                             <div class="cctv-hud-top">
                                 <span>NODE ${this._escapeHtml(cam.id)} // ${this._escapeHtml(cam.region || '')}</span>
@@ -376,7 +433,13 @@ class TrafficCameraSystem {
             if (retryBtn) {
                 retryBtn.addEventListener('click', () => this._retryStream(cam));
             }
-            this._setupStreamMonitor(cam);
+
+            if (needsResolve) {
+                // Async resolve the stream URL
+                this._resolveAndInjectStream(cam);
+            } else {
+                this._setupStreamMonitor(cam);
+            }
         }
 
         // Start timestamp update for all feed types
@@ -406,6 +469,79 @@ class TrafficCameraSystem {
                     <div class="cctv-tactical-note">${cam.classification === 'UNCLASSIFIED' ? 'NO LIVE FEED AVAILABLE — TACTICAL OVERLAY ACTIVE' : 'RESTRICTED FEED — LIVE SENSOR REQUIRES AUTHORIZATION'}</div>
                 </div>
             </div>`;
+    }
+
+    async _resolveAndInjectStream(cam) {
+        const container = document.getElementById('cctv-feed-container');
+        if (!container || !this.popup) return;
+
+        const embedUrl = await this._resolveStreamUrl(cam);
+
+        // Check popup still open (user may have closed during fetch)
+        if (!this.popup || !document.getElementById('cctv-feed-container')) return;
+
+        const loading = document.getElementById('cctv-stream-loading');
+
+        if (embedUrl) {
+            // Success — store resolved URL on the cam object and inject iframe
+            cam.feedUrl = embedUrl;
+
+            if (loading) loading.remove();
+
+            const iframeEl = document.createElement('iframe');
+            iframeEl.src = embedUrl;
+            iframeEl.className = 'cctv-feed-iframe';
+            iframeEl.id = 'cctv-feed-iframe';
+            iframeEl.allow = 'autoplay; encrypted-media';
+            iframeEl.allowFullscreen = true;
+            iframeEl.frameBorder = '0';
+            container.insertBefore(iframeEl, container.firstChild);
+
+            this._showInfoMsg('Live stream resolved and connected. Feed may have latency.', 'info');
+            const refEl = document.getElementById('cctv-hud-refresh');
+            if (refEl) refEl.textContent = 'STREAM: LIVE';
+
+            // Now arm the standard stream monitor
+            this._setupStreamMonitor(cam);
+        } else {
+            // Resolution failed — switch to tactical overlay
+            if (loading) loading.remove();
+
+            const ts = new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+            const temp = document.createElement('div');
+            temp.innerHTML = this._buildTacticalOverlay(cam, ts);
+            container.insertBefore(temp.firstElementChild, container.firstChild);
+
+            // Add scanline and crosshair
+            const hud = container.querySelector('.cctv-feed-hud');
+            if (hud && !container.querySelector('.cctv-crosshair')) {
+                const ch = document.createElement('div');
+                ch.className = 'cctv-crosshair';
+                hud.parentNode.insertBefore(ch, hud);
+            }
+            if (!container.querySelector('.cctv-scanline')) {
+                const sl = document.createElement('div');
+                sl.className = 'cctv-scanline';
+                container.appendChild(sl);
+            }
+
+            this._showInfoMsg('No live stream currently available for this channel. Showing tactical overlay. Click 🔁 RETRY to try again.', 'warn');
+
+            const refEl = document.getElementById('cctv-hud-refresh');
+            if (refEl) refEl.textContent = 'TACTICAL OVERLAY';
+
+            const liveDot = document.getElementById('cctv-live-dot');
+            if (liveDot) {
+                liveDot.textContent = '▲ NO STREAM';
+                liveDot.style.color = '#ff9100';
+            }
+
+            // Show retry, hide toggle
+            const retryBtn = document.getElementById('cctv-retry-stream');
+            const toggleBtn = document.getElementById('cctv-view-toggle');
+            if (retryBtn) retryBtn.style.display = '';
+            if (toggleBtn) toggleBtn.style.display = 'none';
+        }
     }
 
     _togglePopupView(cam) {
@@ -448,29 +584,56 @@ class TrafficCameraSystem {
             if (refEl) refEl.textContent = 'TACTICAL OVERLAY';
         } else {
             // Currently showing tactical → switch to stream
-            const tactical = container.querySelector('.cctv-tactical-feed');
-            if (tactical) tactical.remove();
+            if (!cam.feedUrl && cam.channelId) {
+                // Need to resolve URL first
+                if (toggleBtn) toggleBtn.textContent = '⟳ RESOLVING...';
+                this._resolveStreamUrl(cam).then(embedUrl => {
+                    if (!this.popup) return;
+                    if (embedUrl) {
+                        cam.feedUrl = embedUrl;
+                        // Now actually do the switch
+                        this._doSwitchToStream(cam, container, toggleBtn, infoMsg);
+                    } else {
+                        if (toggleBtn) toggleBtn.textContent = '📺 STREAM';
+                        this._showInfoMsg('No live stream found for this channel. Try again later.', 'warn');
+                    }
+                });
+                return;
+            }
 
-            const crosshair = container.querySelector('.cctv-crosshair');
-            if (crosshair) crosshair.remove();
+            this._doSwitchToStream(cam, container, toggleBtn, infoMsg);
+        }
+    }
 
-            const scanline = container.querySelector('.cctv-scanline');
-            if (scanline) scanline.remove();
+    _doSwitchToStream(cam, container, toggleBtn, infoMsg) {
+        const tactical = container.querySelector('.cctv-tactical-feed');
+        if (tactical) tactical.remove();
 
-            const iframeEl = document.createElement('iframe');
-            iframeEl.src = cam.feedUrl;
-            iframeEl.className = 'cctv-feed-iframe';
-            iframeEl.id = 'cctv-feed-iframe';
-            iframeEl.allow = 'autoplay; encrypted-media';
-            iframeEl.allowFullscreen = true;
-            iframeEl.frameBorder = '0';
-            container.insertBefore(iframeEl, container.firstChild);
+        const crosshair = container.querySelector('.cctv-crosshair');
+        if (crosshair) crosshair.remove();
 
-            if (toggleBtn) toggleBtn.textContent = '🔄 TACTICAL';
-            if (infoMsg) infoMsg.innerHTML = '<span class="cctv-msg-icon">ℹ</span> Live video stream from OSINT source. Feed may have latency.';
+        const scanline = container.querySelector('.cctv-scanline');
+        if (scanline) scanline.remove();
 
-            const refEl = document.getElementById('cctv-hud-refresh');
-            if (refEl) refEl.textContent = 'STREAM: LIVE';
+        const iframeEl = document.createElement('iframe');
+        iframeEl.src = cam.feedUrl;
+        iframeEl.className = 'cctv-feed-iframe';
+        iframeEl.id = 'cctv-feed-iframe';
+        iframeEl.allow = 'autoplay; encrypted-media';
+        iframeEl.allowFullscreen = true;
+        iframeEl.frameBorder = '0';
+        container.insertBefore(iframeEl, container.firstChild);
+
+        if (toggleBtn) toggleBtn.textContent = '🔄 TACTICAL';
+        if (infoMsg) infoMsg.innerHTML = '<span class="cctv-msg-icon">ℹ</span> Live video stream from OSINT source. Feed may have latency.';
+
+        const refEl = document.getElementById('cctv-hud-refresh');
+        if (refEl) refEl.textContent = 'STREAM: LIVE';
+
+        const liveDot = document.getElementById('cctv-live-dot');
+        if (liveDot) {
+            liveDot.textContent = '● LIVE';
+            liveDot.style.color = '';
         }
     }
 
@@ -509,14 +672,38 @@ class TrafficCameraSystem {
     }
 
     _retryStream(cam) {
-        // Switch back to stream view
+        // Clear cached resolved URL to force fresh resolution
+        if (cam.channelId) {
+            delete this._resolvedUrls[cam.channelId];
+            cam.feedUrl = null; // Force re-resolve
+        }
+
         const container = document.getElementById('cctv-feed-container');
         if (!container) return;
 
+        // Remove existing tactical/iframe
         const tactical = container.querySelector('.cctv-tactical-feed');
-        if (tactical) {
-            this._togglePopupView(cam); // Switch back to iframe
-        }
+        if (tactical) tactical.remove();
+        const oldIframe = container.querySelector('.cctv-feed-iframe');
+        if (oldIframe) oldIframe.remove();
+        const crosshair = container.querySelector('.cctv-crosshair');
+        if (crosshair) crosshair.remove();
+        const scanline = container.querySelector('.cctv-scanline');
+        if (scanline) scanline.remove();
+
+        // Show loading state
+        const loadingHtml = `<div class="cctv-tactical-feed" id="cctv-stream-loading">
+            <div class="cctv-static-noise"></div>
+            <div class="cctv-tactical-grid"></div>
+            <div class="cctv-tactical-center">
+                <div class="cctv-tactical-icon" style="animation: pulse 1s infinite">⟳</div>
+                <div class="cctv-tactical-label" style="color:#00e5ff">RE-RESOLVING STREAM</div>
+                <div class="cctv-tactical-sublabel">Connecting to OSINT source...</div>
+            </div>
+        </div>`;
+        const temp = document.createElement('div');
+        temp.innerHTML = loadingHtml;
+        container.insertBefore(temp.firstElementChild, container.firstChild);
 
         // Reset buttons
         const retryBtn = document.getElementById('cctv-retry-stream');
@@ -529,16 +716,18 @@ class TrafficCameraSystem {
 
         const liveDot = document.getElementById('cctv-live-dot');
         if (liveDot) {
-            liveDot.textContent = '● LIVE';
-            liveDot.style.color = '';
+            liveDot.textContent = '⟳ RESOLVING';
+            liveDot.style.color = '#ffe132';
         }
 
-        this._showInfoMsg('Retrying live stream... Feed may take a moment to load.', 'info');
+        this._showInfoMsg('Retrying stream resolution...', 'info');
 
-        // Re-arm the stream monitor
+        // Re-arm timers
         if (this._streamCheckTimeout) clearTimeout(this._streamCheckTimeout);
         if (this._streamFallbackTimeout) clearTimeout(this._streamFallbackTimeout);
-        this._setupStreamMonitor(cam);
+
+        // Re-resolve
+        this._resolveAndInjectStream(cam);
     }
 
     _startPopupRefresh(cam) {
@@ -627,7 +816,7 @@ class TrafficCameraSystem {
         const viewer = document.getElementById('cam-feed-viewer');
         if (!viewer) return;
 
-        const isStream = cam.feedType === 'stream' && cam.feedUrl;
+        const isStream = cam.feedType === 'stream' && (cam.feedUrl || cam.channelId);
         const latDir = cam.lat >= 0 ? 'N' : 'S';
         const lonDir = cam.lon >= 0 ? 'E' : 'W';
 
