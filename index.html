@@ -33,14 +33,19 @@
   <!-- Top Bar -->
   <header class="spy-topbar">
     <div style="font-size:16px; font-weight:bold; letter-spacing:2px; display:flex; align-items:center; gap:10px;">
-      <span>⬡</span> COMMAND CENTER // SPY SATELLITE
+      <span>⬡</span> COMMAND CENTER // PALANTIR-GEO
     </div>
     <div class="shader-controls">
-      <button class="shader-btn active" onclick="applyShader('normal'); this.parentElement.querySelectorAll('.shader-btn').forEach(b=>b.classList.remove('active')); this.classList.add('active')">Standard</button>
-      <button class="shader-btn" onclick="applyShader('thermal'); this.parentElement.querySelectorAll('.shader-btn').forEach(b=>b.classList.remove('active')); this.classList.add('active')">Thermal</button>
-      <button class="shader-btn" onclick="applyShader('night'); this.parentElement.querySelectorAll('.shader-btn').forEach(b=>b.classList.remove('active')); this.classList.add('active')">Night</button>
-      <button class="shader-btn active" id="prediction-toggle" onclick="togglePredictions()">PREDICTIONS: ON</button>
-      <button class="shader-btn intel-report" onclick="triggerOmegaProtocol()">ACTIVATE OMEGA PROTOCOL</button>
+      <button class="imagery-mode-btn active" data-mode="standard" onclick="window.ImageryModes.setMode('standard')">EO</button>
+      <button class="imagery-mode-btn" data-mode="thermal" onclick="window.ImageryModes.setMode('thermal')">FLIR</button>
+      <button class="imagery-mode-btn" data-mode="nightvision" onclick="window.ImageryModes.setMode('nightvision')">NVG</button>
+      <button class="imagery-mode-btn" data-mode="crt" onclick="window.ImageryModes.setMode('crt')">CRT</button>
+      <button class="imagery-mode-btn" data-mode="sar" onclick="window.ImageryModes.setMode('sar')">SAR</button>
+      <button class="imagery-mode-btn" data-mode="multispectral" onclick="window.ImageryModes.setMode('multispectral')">MSI</button>
+      <span style="width:1px; height:20px; background:var(--glass-border); margin:0 4px;"></span>
+      <button class="shader-btn active" id="prediction-toggle" onclick="togglePredictions()">PRED: ON</button>
+      <button class="shader-btn" id="panoptic-toggle" onclick="window.PanopticEngine.toggle(); this.classList.toggle('active'); this.textContent = window.PanopticEngine.enabled ? 'PANOPTIC: ON' : 'PANOPTIC: OFF'">PANOPTIC: OFF</button>
+      <button class="shader-btn intel-report" onclick="triggerOmegaProtocol()">OMEGA PROTOCOL</button>
     </div>
     <div class="health-indicator">
       <span>SYS STATUS:</span>
@@ -104,6 +109,30 @@
         SYNCHRONIZING...
       </div>
     </div>
+
+    <!-- Austin Traffic Cams Panel -->
+    <div class="spy-panel-title" style="margin-top:20px;">AUSTIN TRAFFIC CAMS</div>
+    <div class="telem-item">
+      <div style="display:flex; gap:5px; margin-bottom:8px;">
+        <button id="toggle-traffic-cams" class="threat-profile-btn" style="flex:1;" onclick="toggleTrafficCamsUI()">ENABLE CCTV FEED</button>
+        <button id="toggle-traffic-flow" class="threat-profile-btn" style="flex:1;" onclick="toggleTrafficFlowUI()">TRAFFIC FLOW</button>
+      </div>
+      <div id="traffic-cam-stats" style="font-size:10px; color:var(--text-dim);">STANDBY</div>
+      <div id="camera-feed-panel" style="max-height:120px; overflow-y:auto; margin-top:6px;"></div>
+      <div id="cam-feed-viewer" style="margin-top:6px;"></div>
+    </div>
+
+    <!-- Traffic Flow Stats -->
+    <div class="spy-panel-title" style="margin-top:20px;">TRAFFIC ANALYSIS</div>
+    <div id="traffic-stats-panel" class="telem-item" style="font-size:10px; color:var(--text-dim);">NO DATA</div>
+
+    <!-- Panoptic Detection Panel -->
+    <div class="spy-panel-title" style="margin-top:20px;">PANOPTIC DETECTION</div>
+    <div class="telem-item">
+      <div id="panoptic-stats" style="font-size:10px; color:var(--text-dim);">ENGINE OFFLINE</div>
+      <div class="spy-panel-title" style="margin-top:8px; font-size:9px;">DETECTION LOG</div>
+      <div id="panoptic-log" style="max-height:100px; overflow-y:auto; font-size:9px;">AWAITING DETECTIONS...</div>
+    </div>
   </aside>
 
   <!-- Center: Map -->
@@ -147,6 +176,7 @@
           <div><span style="color:var(--text-dim); display:block;">ACTIVE ASSETS</span><span id="mon-assets" style="color:var(--neon-green);">-</span></div>
           <div><span style="color:var(--text-dim); display:block;">ERROR RATE</span><span id="mon-errors" style="color:var(--neon-red);">-</span></div>
         </div>
+        <div id="system-monitor-stats" style="margin-top:8px; font-size:10px; color:var(--neon-green); line-height:1.6; font-family:'Share Tech Mono',monospace;"></div>
       </div>
     </div>
 
@@ -256,6 +286,10 @@
   <script src="config.js"></script>
   <script type="module" src="map.js"></script>
   <script type="module" src="asset-tracker/index.js"></script>
+  <script type="module" src="traffic-cams.js"></script>
+  <script type="module" src="traffic-flow.js"></script>
+  <script type="module" src="panoptic-detection.js"></script>
+  <script type="module" src="imagery-modes.js"></script>
   <script src="app.js"></script>
   <script src="app-logic.js"></script>
 
@@ -495,6 +529,71 @@ CONFIDENTIAL // RAM-ONLY LOG // ZERO FOOTPRINT
         if (pane) pane.classList.add('active');
       });
     });
+
+    // --- TRAFFIC CAMS UI ---
+    async function toggleTrafficCamsUI() {
+      const btn = document.getElementById('toggle-traffic-cams');
+      const stats = document.getElementById('traffic-cam-stats');
+      if (!window.TrafficCams) { stats.textContent = 'MODULE NOT LOADED'; return; }
+
+      if (!window.TrafficCams.cameras.length) {
+        stats.textContent = 'LOADING CAMERAS...';
+        await window.TrafficCams.loadCameras();
+      }
+
+      const visible = window.TrafficCams.toggle(window.viewer);
+      btn.textContent = visible ? 'DISABLE CCTV' : 'ENABLE CCTV FEED';
+      btn.classList.toggle('active', visible);
+
+      if (visible) {
+        window.TrafficCams.renderCameraPanel();
+        window.TrafficCams.startAutoRefresh();
+        const s = window.TrafficCams.getStats();
+        stats.innerHTML = `<span style="color:var(--neon-green)">${s.active}</span> ACTIVE / <span style="color:var(--neon-red)">${s.offline}</span> OFFLINE`;
+
+        // Fly to Austin
+        if (window.viewer) {
+          window.viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(-97.7431, 30.2672, 50000),
+            duration: 2.0
+          });
+        }
+      } else {
+        window.TrafficCams.stopAutoRefresh();
+        stats.textContent = 'STANDBY';
+        document.getElementById('camera-feed-panel').innerHTML = '';
+        document.getElementById('cam-feed-viewer').innerHTML = '';
+      }
+    }
+
+    // --- TRAFFIC FLOW UI ---
+    function toggleTrafficFlowUI() {
+      const btn = document.getElementById('toggle-traffic-flow');
+      if (!window.TrafficFlow) return;
+
+      const visible = window.TrafficFlow.toggle(window.viewer);
+      btn.textContent = visible ? 'FLOW: ON' : 'TRAFFIC FLOW';
+      btn.classList.toggle('active', visible);
+
+      if (visible) {
+        window.TrafficFlow.renderStatsPanel();
+        setInterval(() => window.TrafficFlow.renderStatsPanel(), 10000);
+      }
+    }
+
+    // --- IMAGERY MODES INIT ---
+    function initImageryModes() {
+      if (window.ImageryModes && window.viewer) {
+        window.ImageryModes.init(window.viewer);
+      }
+    }
+    // Retry imagery init until viewer is ready
+    const _imgRetry = setInterval(() => {
+      if (window.viewer && window.ImageryModes) {
+        window.ImageryModes.init(window.viewer);
+        clearInterval(_imgRetry);
+      }
+    }, 2000);
 
     // Challenge button delegation
     document.addEventListener('click', function(e) {

@@ -1,5 +1,9 @@
 // map.js - OMEGA RESTORE: 3D Geospatial Engine (CesiumJS)
 import SatelliteTracker, { SATELLITE_CATEGORIES } from './asset-tracker/satellite-tracker.js';
+import TrafficCams from './traffic-cams.js';
+import TrafficFlow from './traffic-flow.js';
+import PanopticEngine from './panoptic-detection.js';
+import ImageryModes from './imagery-modes.js';
 
 let viewer = null;
 let leafletMap = null; // 2D Fallback
@@ -81,6 +85,11 @@ window.initMap = async function() {
 
         await SatelliteTracker.loadAllSatellites();
         setupSatelliteUI();
+
+        // --- Initialize new Palantir-GEO modules ---
+        try { ImageryModes.init(viewer); } catch (e) { console.warn('[IMAGERY] Init failed:', e); }
+        try { await TrafficCams.loadCameras(); TrafficCams.renderCameraPanel(); } catch (e) { console.warn('[TRAFFIC-CAM] Init failed:', e); }
+        try { TrafficFlow.start(); } catch (e) { console.warn('[TRAFFIC-FLOW] Init failed:', e); }
 
         setInterval(() => {
             const adsbVal = document.getElementById('live-adsb-count');
@@ -634,7 +643,13 @@ window.toggleTargetLock = function(id) {
 let nightVisionStage = null;
 let thermalStage = null;
 
+// Shader compatibility — delegate to ImageryModes when available
 window.applyShader = function(type) {
+    if (window.ImageryModes && window.ImageryModes.initialized) {
+        const modeMap = { normal: 'STANDARD', thermal: 'THERMAL', night: 'NIGHT_VISION' };
+        window.ImageryModes.setMode(modeMap[type] || 'STANDARD');
+        return;
+    }
     if (!viewer) return;
 
     if (!nightVisionStage) {

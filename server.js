@@ -54,7 +54,8 @@ const helmetHandler = helmet({
                 "https://cesium.com",
                 "https://dev.virtualearth.net",
                 "https://*.virtualearth.net",
-                "https://*.bing.com"
+                "https://*.bing.com",
+                "https://data.austintexas.gov"
             ]
         }
     }
@@ -233,6 +234,43 @@ function logBriefing(ac) {
               });
         }
     }
+}
+
+function proxyTrafficCams(req, res) {
+    const parsed = new URL(req.url, `http://localhost:${PORT}`);
+    const targetUrl = parsed.searchParams.get('url');
+    if (!targetUrl) {
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: 'Missing url parameter' }));
+        return;
+    }
+    // Only allow Austin open data domain
+    let parsedTarget;
+    try { parsedTarget = new URL(targetUrl); } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid URL' }));
+        return;
+    }
+    if (parsedTarget.hostname !== 'data.austintexas.gov') {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Domain not allowed' }));
+        return;
+    }
+    const proxyReq = https.request(targetUrl, { timeout: 10000 }, (proxyRes) => {
+        const chunks = [];
+        proxyRes.on('data', c => chunks.push(c));
+        proxyRes.on('end', () => {
+            const body = Buffer.concat(chunks).toString('utf8');
+            res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(body);
+        });
+    });
+    proxyReq.on('error', () => {
+        res.writeHead(502, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: 'Upstream traffic cam fetch failed' }));
+    });
+    proxyReq.on('timeout', () => { proxyReq.destroy(); });
+    proxyReq.end();
 }
 
 function handleProximityAlert(req, res) {
@@ -655,6 +693,7 @@ const server = http.createServer((req, res) => {
             if (url === '/api/briefings') return getBriefings(req, res);
             if (url === '/api/generate-report') return generateReport(req, res);
             if (url === '/api/proximity-alert') return handleProximityAlert(req, res);
+            if (url === '/api/traffic-cams') return proxyTrafficCams(req, res);
 
             // ── SECURITY EXAMPLES ──
             if (url === '/api/admin/rotate-keys' && req.method === 'POST') {

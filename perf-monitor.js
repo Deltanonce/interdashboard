@@ -9,7 +9,8 @@ class PerfMonitor {
             adsb: { calls: 0, totalTime: 0, errors: 0, lastPoll: null, lastDuration: 0 },
             ais: { messages: 0, startTime: null, uptime: 0, reconnects: 0, connected: false },
             render: { frames: 0, drops: 0, lastFrame: Date.now(), fps: 0 },
-            memory: { heapUsed: 0, heapTotal: 0, limit: 0 }
+            memory: { heapUsed: 0, heapTotal: 0, limit: 0 },
+            modules: { trafficCams: false, trafficFlow: false, panoptic: false, imageryMode: 'STANDARD' }
         };
         this.startTime = Date.now();
         this.frameCounter = 0;
@@ -90,6 +91,12 @@ class PerfMonitor {
      * Returns a summary of performance metrics.
      */
     getStats() {
+        // Snapshot module states from globals
+        this.metrics.modules.trafficCams = !!(window.TrafficCams && window.TrafficCams.active);
+        this.metrics.modules.trafficFlow = !!(window.TrafficFlow && window.TrafficFlow.active);
+        this.metrics.modules.panoptic = !!(window.PanopticEngine && window.PanopticEngine.enabled);
+        this.metrics.modules.imageryMode = (window.ImageryModes && window.ImageryModes.currentMode) || 'STANDARD';
+
         const adsb = this.metrics.adsb;
         const ais = this.metrics.ais;
         const currentAisUptime = ais.startTime ? (ais.uptime + (Date.now() - ais.startTime)) : ais.uptime;
@@ -117,7 +124,8 @@ class PerfMonitor {
                 usedMb: this.metrics.memory.heapUsed,
                 totalMb: this.metrics.memory.heapTotal,
                 limitMb: this.metrics.memory.limit
-            }
+            },
+            modules: { ...this.metrics.modules }
         };
     }
 
@@ -128,9 +136,23 @@ class PerfMonitor {
     startAutoLog(intervalMs = 30000) {
         setInterval(() => {
             const s = this.getStats();
-            console.log(`%c[PERF-MONITOR] %cFPS: ${s.render.fps} | MEM: ${s.memory.usedMb}MB / ${s.memory.totalMb}MB | ADS-B Avg: ${s.adsb.avgResponseTimeMs}ms | AIS Msg: ${s.ais.totalMessages}`, 
+            console.log(`%c[PERF-MONITOR] %cFPS: ${s.render.fps} | MEM: ${s.memory.usedMb}MB / ${s.memory.totalMb}MB | ADS-B Avg: ${s.adsb.avgResponseTimeMs}ms | AIS Msg: ${s.ais.totalMessages} | IMG: ${s.modules.imageryMode}`, 
                 "color: #00ff41; font-weight: bold;", "color: #ffb000;");
+            this._updateSystemPanel(s);
         }, intervalMs);
+
+        // Also update the panel more frequently (every 3s) for real-time feel
+        setInterval(() => this._updateSystemPanel(this.getStats()), 3000);
+    }
+
+    _updateSystemPanel(s) {
+        const el = document.getElementById('system-monitor-stats');
+        if (!el) return;
+        el.innerHTML = `<span style="color:#00ff41">FPS</span> ${s.render.fps} <span style="color:#ffb000">DROP</span> ${s.render.frameDrops}<br>`
+            + `<span style="color:#00ff41">MEM</span> ${s.memory.usedMb}/${s.memory.totalMb} MB<br>`
+            + `<span style="color:#00ff41">ADSB</span> ${s.adsb.totalPolls} polls (${s.adsb.avgResponseTimeMs}ms avg)<br>`
+            + `<span style="color:#00ff41">AIS</span> ${s.ais.status} | ${s.ais.totalMessages} msg<br>`
+            + `<span style="color:#00ff41">IMG</span> ${s.modules.imageryMode} | <span style="color:#0ff">PAN</span> ${s.modules.panoptic ? 'ON' : 'OFF'}`;
     }
 }
 

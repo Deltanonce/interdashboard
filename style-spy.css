@@ -1046,3 +1046,324 @@ body.spy-sim .spark-arrow { font-size: 8px; }
 /* Flash animation for new items */
 @keyframes flash-new-anim { 0% { background: rgba(0, 255, 65, 0.15); } 100% { background: transparent; } }
 body.spy-sim .flash-new { animation: flash-new-anim 1.5s ease-out; }
+
+/* ═══════════════════════════════════════════
+   IMAGERY MODE BUTTONS
+   ═══════════════════════════════════════════ */
+.imagery-mode-btn {
+  background: rgba(0, 255, 65, 0.04);
+  border: 1px solid rgba(0, 255, 65, 0.2);
+  color: var(--text-dim);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  padding: 3px 8px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.15s ease;
+}
+.imagery-mode-btn:hover {
+  background: rgba(0, 255, 65, 0.12);
+  border-color: var(--neon-green);
+  color: var(--neon-green);
+}
+.imagery-mode-btn.active {
+  background: rgba(0, 255, 65, 0.15);
+  border-color: var(--neon-green);
+  color: var(--neon-green);
+  box-shadow: inset 0 0 6px rgba(0, 255, 65, 0.15), 0 0 4px rgba(0, 255, 65, 0.1);
+}
+
+/* ═══════════════════════════════════════════
+   IMAGERY HUD OVERLAY
+   ═══════════════════════════════════════════ */
+.imagery-hud {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 600;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  display: none;
+}
+.imagery-hud .hud-top-left {
+  position: absolute;
+  top: 10px; left: 12px;
+}
+.imagery-hud .hud-top-right {
+  position: absolute;
+  top: 10px; right: 12px;
+  text-align: right;
+}
+.imagery-hud .hud-bottom-left {
+  position: absolute;
+  bottom: 10px; left: 12px;
+}
+.imagery-hud .hud-bottom-right {
+  position: absolute;
+  bottom: 10px; right: 12px;
+  text-align: right;
+}
+.imagery-hud .hud-mode-label {
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 2px;
+}
+.imagery-hud .hud-classification {
+  font-size: 9px;
+  opacity: 0.7;
+  letter-spacing: 1.5px;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  display: inline-block;
+}
+.imagery-hud .hud-timestamp {
+  font-size: 10px;
+  opacity: 0.8;
+}
+.imagery-hud .hud-gain, .imagery-hud .hud-fov, .imagery-hud .hud-zoom {
+  font-size: 9px;
+  opacity: 0.6;
+}
+.imagery-hud .hud-reticle {
+  font-size: 24px;
+  opacity: 0.4;
+}
+.imagery-hud .hud-crosshair {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60px; height: 60px;
+  border: 1px solid;
+  border-radius: 50%;
+  opacity: 0.3;
+}
+.imagery-hud .hud-crosshair::before,
+.imagery-hud .hud-crosshair::after {
+  content: '';
+  position: absolute;
+  background: currentColor;
+  opacity: 0.3;
+}
+.imagery-hud .hud-crosshair::before {
+  width: 100%;
+  height: 1px;
+  top: 50%;
+  left: 0;
+}
+.imagery-hud .hud-crosshair::after {
+  width: 1px;
+  height: 100%;
+  left: 50%;
+  top: 0;
+}
+
+/* ═══════════════════════════════════════════
+   TRAFFIC CAMERA STYLES
+   ═══════════════════════════════════════════ */
+.cam-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  font-size: 9px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(0,255,65,0.05);
+  transition: background 0.15s;
+}
+.cam-item:hover {
+  background: rgba(0,229,255,0.08);
+}
+.cam-item.cam-selected {
+  background: rgba(0,229,255,0.12);
+  border-left: 2px solid var(--neon-cyan);
+}
+.cam-status { font-size: 8px; }
+.cam-online { color: var(--neon-green); }
+.cam-offline { color: var(--neon-red); }
+.cam-name { flex: 1; color: var(--text-primary); font-size: 9px; }
+.cam-type {
+  font-size: 7px;
+  padding: 1px 3px;
+  border: 1px solid rgba(0,229,255,0.3);
+  color: var(--neon-cyan);
+  text-transform: uppercase;
+}
+
+/* Camera Feed Viewer  */
+.cam-viewer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 9px;
+  padding: 4px 6px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--glass-border);
+}
+.cam-live-badge {
+  color: var(--neon-red);
+  font-size: 8px;
+  animation: flash-red 1.5s infinite alternate;
+}
+.cam-viewer-body {
+  position: relative;
+  background: #000;
+  border: 1px solid var(--glass-border);
+  min-height: 80px;
+  overflow: hidden;
+}
+.cam-image {
+  width: 100%;
+  height: auto;
+  display: block;
+  filter: saturate(0.6) contrast(1.3) brightness(0.9);
+}
+.cam-simulated-feed {
+  position: relative;
+  width: 100%;
+  height: 80px;
+  background: linear-gradient(135deg, #0a0e14 0%, #0d1117 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cam-noise-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(0deg, rgba(0,255,65,0.02), rgba(0,255,65,0.02) 1px, transparent 1px, transparent 3px);
+  pointer-events: none;
+  animation: cam-noise-scroll 0.1s infinite linear;
+}
+@keyframes cam-noise-scroll {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 3px; }
+}
+.cam-hud-overlay {
+  position: relative;
+  z-index: 1;
+  color: var(--neon-green);
+  font-size: 8px;
+  text-align: center;
+  line-height: 1.6;
+}
+.cam-no-signal {
+  color: var(--neon-red);
+  font-size: 14px;
+  text-align: center;
+  padding: 20px;
+  letter-spacing: 3px;
+}
+.cam-timestamp {
+  font-size: 7px;
+  opacity: 0.6;
+}
+
+/* ═══════════════════════════════════════════
+   TRAFFIC FLOW STYLES
+   ═══════════════════════════════════════════ */
+.traffic-overview {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.traffic-metric {
+  text-align: center;
+  padding: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+}
+.traffic-metric-label {
+  display: block;
+  font-size: 7px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  margin-bottom: 2px;
+}
+.traffic-metric-value {
+  font-size: 14px;
+  font-weight: bold;
+  font-family: var(--font-data);
+}
+.traffic-corridor-item {
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.corridor-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  margin-bottom: 2px;
+}
+.corridor-name { color: var(--text-primary); }
+.corridor-level { font-weight: bold; font-family: var(--font-data); font-size: 8px; }
+.corridor-bar {
+  height: 3px;
+  background: rgba(255,255,255,0.06);
+  margin: 2px 0;
+}
+.corridor-bar-fill {
+  height: 100%;
+  transition: width 0.5s, background 0.5s;
+}
+.corridor-details {
+  display: flex;
+  justify-content: space-between;
+  font-size: 8px;
+  color: var(--text-dim);
+}
+
+/* ═══════════════════════════════════════════
+   PANOPTIC DETECTION STYLES
+   ═══════════════════════════════════════════ */
+.panoptic-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.panoptic-stat {
+  text-align: center;
+  padding: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+}
+.panoptic-stat-val {
+  display: block;
+  font-size: 14px;
+  font-weight: bold;
+  font-family: var(--font-data);
+}
+.panoptic-stat-label {
+  font-size: 7px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+.panoptic-categories {
+  margin-top: 4px;
+}
+.panoptic-cat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 9px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.panoptic-cat-icon { font-size: 10px; width: 16px; text-align: center; }
+.panoptic-cat-name { flex: 1; color: var(--text-secondary); }
+.panoptic-cat-count { font-family: var(--font-data); font-weight: bold; min-width: 24px; text-align: right; }
+
+.panoptic-log-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.02);
+  font-size: 8px;
+}
+.panoptic-log-icon { font-size: 9px; }
+.panoptic-log-cat { color: var(--text-secondary); flex: 1; }
+.panoptic-log-conf { font-family: var(--font-data); min-width: 28px; text-align: right; }
+.panoptic-log-src { color: var(--text-dim); font-size: 7px; min-width: 40px; text-align: right; }
