@@ -20,14 +20,14 @@ const MIDDLE_EAST_CAMERAS = [
 
     // ── TURKEY / BOSPHORUS ──
     // EarthTV Istanbul — verified 24/7 webcam stream
-    { id: 'ME005', name: 'Istanbul — Bosphorus Bridge', lat: 41.0451, lon: 29.0343, status: 'ACTIVE', type: 'STRATEGIC', region: 'TURKEY', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/live_stream?channel=UCkBGZmmFEOauMlAW-YRfU5A&autoplay=1&mute=1', channelId: 'UCkBGZmmFEOauMlAW-YRfU5A', classification: 'UNCLASSIFIED' },
+    { id: 'ME005', name: 'Istanbul — Bosphorus Bridge', lat: 41.0451, lon: 29.0343, status: 'ACTIVE', type: 'STRATEGIC', region: 'TURKEY', feedType: 'stream', feedUrl: null, channelId: 'UCkBGZmmFEOauMlAW-YRfU5A', classification: 'UNCLASSIFIED' },
     // TRT World — Istanbul-based 24/7 live news
-    { id: 'ME006', name: 'Istanbul — Galata Tower', lat: 41.0256, lon: 28.9744, status: 'ACTIVE', type: 'URBAN', region: 'TURKEY', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/live_stream?channel=UC7fWeaHhqgM4Lba4tRzMHgw&autoplay=1&mute=1', channelId: 'UC7fWeaHhqgM4Lba4tRzMHgw', classification: 'UNCLASSIFIED' },
+    { id: 'ME006', name: 'Istanbul — Galata Tower', lat: 41.0256, lon: 28.9744, status: 'ACTIVE', type: 'URBAN', region: 'TURKEY', feedType: 'stream', feedUrl: null, channelId: 'UC7fWeaHhqgM4Lba4tRzMHgw', classification: 'UNCLASSIFIED' },
     { id: 'ME007', name: 'Incirlik AB — Perimeter Approach', lat: 37.0021, lon: 35.4259, status: 'ACTIVE', type: 'MILITARY', region: 'TURKEY', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
 
     // ── UAE / GULF STATES ──
     // Al Arabiya English — Dubai-based 24/7 live news
-    { id: 'ME008', name: 'Dubai — Sheikh Zayed Road', lat: 25.2048, lon: 55.2708, status: 'ACTIVE', type: 'INFRASTRUCTURE', region: 'UAE', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/live_stream?channel=UCbyxxGFNGas9lKdRXnWzWMw&autoplay=1&mute=1', channelId: 'UCbyxxGFNGas9lKdRXnWzWMw', classification: 'UNCLASSIFIED' },
+    { id: 'ME008', name: 'Dubai — Sheikh Zayed Road', lat: 25.2048, lon: 55.2708, status: 'ACTIVE', type: 'INFRASTRUCTURE', region: 'UAE', feedType: 'stream', feedUrl: null, channelId: 'UCbyxxGFNGas9lKdRXnWzWMw', classification: 'UNCLASSIFIED' },
     { id: 'ME009', name: 'Dubai — Jebel Ali Port', lat: 25.0145, lon: 55.0640, status: 'ACTIVE', type: 'PORT', region: 'UAE', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
     { id: 'ME010', name: 'Abu Dhabi — Al Dhafra AB Approach', lat: 24.2500, lon: 54.5500, status: 'ACTIVE', type: 'MILITARY', region: 'UAE', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
     { id: 'ME011', name: 'Doha — Al Udeid AB Perimeter', lat: 25.1173, lon: 51.3150, status: 'ACTIVE', type: 'MILITARY', region: 'QATAR', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
@@ -37,7 +37,7 @@ const MIDDLE_EAST_CAMERAS = [
     { id: 'ME013', name: 'Riyadh — King Fahd Road', lat: 24.7136, lon: 46.6753, status: 'ACTIVE', type: 'INFRASTRUCTURE', region: 'SAUDI', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
     { id: 'ME014', name: 'Jeddah — Islamic Port', lat: 21.4858, lon: 39.1925, status: 'ACTIVE', type: 'PORT', region: 'SAUDI', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
     // Quran TV — Official 24/7 Makkah Live Haram stream
-    { id: 'ME015', name: 'Mecca — Grand Mosque Perimeter', lat: 21.4225, lon: 39.8262, status: 'ACTIVE', type: 'CRITICAL', region: 'SAUDI', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/live_stream?channel=UC0SWnPlRv3aRFwVt3Y3bUkQ&autoplay=1&mute=1', channelId: 'UC0SWnPlRv3aRFwVt3Y3bUkQ', classification: 'UNCLASSIFIED' },
+    { id: 'ME015', name: 'Mecca — Grand Mosque Perimeter', lat: 21.4225, lon: 39.8262, status: 'ACTIVE', type: 'CRITICAL', region: 'SAUDI', feedType: 'stream', feedUrl: null, channelId: 'UC0SWnPlRv3aRFwVt3Y3bUkQ', classification: 'UNCLASSIFIED' },
 
     // ── CONFLICT ZONES ──
     { id: 'ME016', name: 'Baghdad — Green Zone', lat: 33.3120, lon: 44.3615, status: 'ACTIVE', type: 'CONFLICT', region: 'IRAQ', feedType: 'tactical', feedUrl: null, classification: 'TOP SECRET' },
@@ -51,10 +51,10 @@ const MIDDLE_EAST_CAMERAS = [
 
     // ── ISRAEL / LEVANT ──
     // i24NEWS — Tel Aviv-based 24/7 live English news
-    { id: 'ME024', name: 'Tel Aviv — Azrieli Skyline', lat: 32.0740, lon: 34.7920, status: 'ACTIVE', type: 'URBAN', region: 'ISRAEL', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/live_stream?channel=UCKh1xoml5h-LPOHA68XiNJQ&autoplay=1&mute=1', channelId: 'UCKh1xoml5h-LPOHA68XiNJQ', classification: 'UNCLASSIFIED' },
+    { id: 'ME024', name: 'Tel Aviv — Azrieli Skyline', lat: 32.0740, lon: 34.7920, status: 'ACTIVE', type: 'URBAN', region: 'ISRAEL', feedType: 'stream', feedUrl: null, channelId: 'UCKh1xoml5h-LPOHA68XiNJQ', classification: 'UNCLASSIFIED' },
     { id: 'ME025', name: 'Haifa — Port and Bay', lat: 32.8191, lon: 34.9983, status: 'ACTIVE', type: 'PORT', region: 'ISRAEL', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
     // Al Jazeera English — 24/7 live news, heavy Jerusalem/ME coverage
-    { id: 'ME026', name: 'Jerusalem — Old City Walls', lat: 31.7767, lon: 35.2345, status: 'ACTIVE', type: 'CRITICAL', region: 'ISRAEL', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/live_stream?channel=UCNye-wNBqNL5ZzHSJj3l8Bg&autoplay=1&mute=1', channelId: 'UCNye-wNBqNL5ZzHSJj3l8Bg', classification: 'UNCLASSIFIED' },
+    { id: 'ME026', name: 'Jerusalem — Old City Walls', lat: 31.7767, lon: 35.2345, status: 'ACTIVE', type: 'CRITICAL', region: 'ISRAEL', feedType: 'stream', feedUrl: null, channelId: 'UCNye-wNBqNL5ZzHSJj3l8Bg', classification: 'UNCLASSIFIED' },
     { id: 'ME027', name: 'Beirut — Port District', lat: 33.9020, lon: 35.5180, status: 'ACTIVE', type: 'PORT', region: 'LEBANON', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
     { id: 'ME028', name: 'Amman — Downtown / Citadel', lat: 31.9539, lon: 35.9340, status: 'ACTIVE', type: 'URBAN', region: 'JORDAN', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
 
@@ -481,16 +481,8 @@ class TrafficCameraSystem {
         const container = document.getElementById('cctv-feed-container');
         if (!container || !this.popup) return;
 
-        // First try: direct channel live_stream embed URL (no server call needed)
-        let embedUrl = null;
-        if (cam.channelId) {
-            embedUrl = `https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(cam.channelId)}&autoplay=1&mute=1`;
-        }
-
-        // Second try: server-side resolver (only if no channelId)
-        if (!embedUrl) {
-            embedUrl = await this._resolveStreamUrl(cam);
-        }
+        // Resolve via server-side endpoint (fetches YouTube page, extracts video ID)
+        const embedUrl = await this._resolveStreamUrl(cam);
 
         // Check popup still open (user may have closed during fetch)
         if (!this.popup || !document.getElementById('cctv-feed-container')) return;
@@ -600,8 +592,19 @@ class TrafficCameraSystem {
         } else {
             // Currently showing tactical → switch to stream
             if (!cam.feedUrl && cam.channelId) {
-                // Restore direct embed URL from channelId
-                cam.feedUrl = `https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(cam.channelId)}&autoplay=1&mute=1`;
+                // Need to resolve via server first
+                if (toggleBtn) toggleBtn.textContent = '⟳ RESOLVING...';
+                this._resolveStreamUrl(cam).then(embedUrl => {
+                    if (!this.popup) return;
+                    if (embedUrl) {
+                        cam.feedUrl = embedUrl;
+                        this._doSwitchToStream(cam, container, toggleBtn, infoMsg);
+                    } else {
+                        if (toggleBtn) toggleBtn.textContent = '📺 STREAM';
+                        this._showInfoMsg('No live stream found for this channel. Try again later.', 'warn');
+                    }
+                });
+                return;
             }
 
             this._doSwitchToStream(cam, container, toggleBtn, infoMsg);
@@ -675,14 +678,10 @@ class TrafficCameraSystem {
     }
 
     _retryStream(cam) {
-        // Clear cached resolved URL
+        // Clear cached resolved URL to force fresh server resolution
         if (cam.channelId) {
             delete this._resolvedUrls[cam.channelId];
-        }
-
-        // Restore direct embed URL from channelId if available
-        if (cam.channelId) {
-            cam.feedUrl = `https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(cam.channelId)}&autoplay=1&mute=1`;
+            cam.feedUrl = null; // Force re-resolve via server
         }
 
         const container = document.getElementById('cctv-feed-container');
@@ -698,45 +697,43 @@ class TrafficCameraSystem {
         const scanline = container.querySelector('.cctv-scanline');
         if (scanline) scanline.remove();
 
-        // Directly inject iframe with the channel live_stream URL
-        if (cam.feedUrl) {
-            const iframeEl = document.createElement('iframe');
-            iframeEl.src = cam.feedUrl;
-            iframeEl.className = 'cctv-feed-iframe';
-            iframeEl.id = 'cctv-feed-iframe';
-            iframeEl.allow = 'autoplay; encrypted-media';
-            iframeEl.allowFullscreen = true;
-            iframeEl.frameBorder = '0';
-            container.insertBefore(iframeEl, container.firstChild);
+        // Show loading state
+        const loadingHtml = `<div class="cctv-tactical-feed" id="cctv-stream-loading">
+            <div class="cctv-static-noise"></div>
+            <div class="cctv-tactical-grid"></div>
+            <div class="cctv-tactical-center">
+                <div class="cctv-tactical-icon">⟳</div>
+                <div class="cctv-tactical-label" style="color:#00e5ff">RE-RESOLVING STREAM</div>
+                <div class="cctv-tactical-sublabel">Connecting to OSINT source...</div>
+            </div>
+        </div>`;
+        const temp = document.createElement('div');
+        temp.innerHTML = loadingHtml;
+        container.insertBefore(temp.firstElementChild, container.firstChild);
 
-            const liveDot = document.getElementById('cctv-live-dot');
-            if (liveDot) {
-                liveDot.textContent = '● LIVE';
-                liveDot.style.color = '';
-            }
-
-            // Reset buttons
-            const retryBtn = document.getElementById('cctv-retry-stream');
-            const toggleBtn = document.getElementById('cctv-view-toggle');
-            if (retryBtn) retryBtn.style.display = 'none';
-            if (toggleBtn) {
-                toggleBtn.style.display = '';
-                toggleBtn.textContent = '🔄 TACTICAL';
-            }
-
-            const refEl = document.getElementById('cctv-hud-refresh');
-            if (refEl) refEl.textContent = 'STREAM: LIVE';
-
-            this._showInfoMsg('Stream reconnected. Feed may have latency.', 'info');
-
-            // Re-arm stream monitor
-            if (this._streamCheckTimeout) clearTimeout(this._streamCheckTimeout);
-            if (this._streamFallbackTimeout) clearTimeout(this._streamFallbackTimeout);
-            this._setupStreamMonitor(cam);
-        } else {
-            // No channel — fallback to resolve
-            this._resolveAndInjectStream(cam);
+        // Reset buttons
+        const retryBtn = document.getElementById('cctv-retry-stream');
+        const toggleBtn = document.getElementById('cctv-view-toggle');
+        if (retryBtn) retryBtn.style.display = 'none';
+        if (toggleBtn) {
+            toggleBtn.style.display = '';
+            toggleBtn.textContent = '🔄 TACTICAL';
         }
+
+        const liveDot = document.getElementById('cctv-live-dot');
+        if (liveDot) {
+            liveDot.textContent = '⟳ RESOLVING';
+            liveDot.style.color = '#ffe132';
+        }
+
+        this._showInfoMsg('Retrying stream resolution...', 'info');
+
+        // Re-arm timers
+        if (this._streamCheckTimeout) clearTimeout(this._streamCheckTimeout);
+        if (this._streamFallbackTimeout) clearTimeout(this._streamFallbackTimeout);
+
+        // Re-resolve via server
+        this._resolveAndInjectStream(cam);
     }
 
     _startPopupRefresh(cam) {
