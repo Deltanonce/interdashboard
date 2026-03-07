@@ -110,20 +110,20 @@
       </div>
     </div>
 
-    <!-- Austin Traffic Cams Panel -->
-    <div class="spy-panel-title" style="margin-top:20px;">AUSTIN TRAFFIC CAMS</div>
+    <!-- ISR Surveillance Network -->
+    <div class="spy-panel-title" style="margin-top:20px;">ISR SURVEILLANCE NETWORK</div>
     <div class="telem-item">
       <div style="display:flex; gap:5px; margin-bottom:8px;">
-        <button id="toggle-traffic-cams" class="threat-profile-btn" style="flex:1;" onclick="toggleTrafficCamsUI()">ENABLE CCTV FEED</button>
-        <button id="toggle-traffic-flow" class="threat-profile-btn" style="flex:1;" onclick="toggleTrafficFlowUI()">TRAFFIC FLOW</button>
+        <button id="toggle-traffic-cams" class="threat-profile-btn" style="flex:1;" onclick="toggleTrafficCamsUI()">ENABLE ISR FEED</button>
+        <button id="toggle-traffic-flow" class="threat-profile-btn" style="flex:1;" onclick="toggleTrafficFlowUI()">CORRIDORS</button>
       </div>
       <div id="traffic-cam-stats" style="font-size:10px; color:var(--text-dim);">STANDBY</div>
       <div id="camera-feed-panel" style="max-height:120px; overflow-y:auto; margin-top:6px;"></div>
       <div id="cam-feed-viewer" style="margin-top:6px;"></div>
     </div>
 
-    <!-- Traffic Flow Stats -->
-    <div class="spy-panel-title" style="margin-top:20px;">TRAFFIC ANALYSIS</div>
+    <!-- Strategic Corridor Analysis -->
+    <div class="spy-panel-title" style="margin-top:20px;">CORRIDOR ANALYSIS</div>
     <div id="traffic-stats-panel" class="telem-item" style="font-size:10px; color:var(--text-dim);">NO DATA</div>
 
     <!-- Panoptic Detection Panel -->
@@ -542,19 +542,19 @@ CONFIDENTIAL // RAM-ONLY LOG // ZERO FOOTPRINT
       }
 
       const visible = window.TrafficCams.toggle(window.viewer);
-      btn.textContent = visible ? 'DISABLE CCTV' : 'ENABLE CCTV FEED';
+      btn.textContent = visible ? 'DISABLE ISR' : 'ENABLE ISR FEED';
       btn.classList.toggle('active', visible);
 
       if (visible) {
         window.TrafficCams.renderCameraPanel();
         window.TrafficCams.startAutoRefresh();
         const s = window.TrafficCams.getStats();
-        stats.innerHTML = `<span style="color:var(--neon-green)">${s.active}</span> ACTIVE / <span style="color:var(--neon-red)">${s.offline}</span> OFFLINE`;
+        stats.innerHTML = `<span style="color:var(--neon-green)">${s.active}</span> ACTIVE / <span style="color:var(--neon-red)">${s.degraded}</span> DEGRADED`;
 
-        // Fly to Austin
+        // Fly to Middle East overview
         if (window.viewer) {
           window.viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(-97.7431, 30.2672, 50000),
+            destination: Cesium.Cartesian3.fromDegrees(44.0, 29.0, 5000000),
             duration: 2.0
           });
         }
@@ -572,7 +572,7 @@ CONFIDENTIAL // RAM-ONLY LOG // ZERO FOOTPRINT
       if (!window.TrafficFlow) return;
 
       const visible = window.TrafficFlow.toggle(window.viewer);
-      btn.textContent = visible ? 'FLOW: ON' : 'TRAFFIC FLOW';
+      btn.textContent = visible ? 'CORRIDORS: ON' : 'CORRIDORS';
       btn.classList.toggle('active', visible);
 
       if (visible) {

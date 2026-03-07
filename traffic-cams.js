@@ -1,21 +1,61 @@
-// traffic-cams.js — Austin Real-Time Traffic Camera System
-// Pulls live camera feeds from Austin's Open Data portal (CoA CCTV)
+// traffic-cams.js — Middle East OSINT / CCTV Surveillance System
+// Strategic camera network for conflict zone monitoring and ISR analysis
 
-const AUSTIN_CCTV_API = 'https://data.austintexas.gov/resource/b4k4-adkb.json';
-const REFRESH_INTERVAL = 30000; // 30s refresh for camera list
-const MAX_CAMS = 200;
+const REFRESH_INTERVAL = 30000;
 
-// Austin TxDOT live camera snapshot base (public, no auth required)
-const TXDOT_SNAPSHOT_BASE = 'https://its.txdot.gov/ITS_WEB/FrontEnd/snapshots/';
-// Austin camera IDs map to TxDOT snapshot URLs: CCTV{id}.jpg (refreshed every ~30s)
-const TXDOT_CCTV_IDS = {
-    'ATX001': 'CCTV506', 'ATX002': 'CCTV515', 'ATX003': 'CCTV509',
-    'ATX004': 'CCTV520', 'ATX005': 'CCTV505', 'ATX006': 'CCTV518',
-    'ATX007': 'CCTV502', 'ATX008': 'CCTV510', 'ATX009': 'CCTV504',
-    'ATX010': 'CCTV503', 'ATX011': 'CCTV507', 'ATX012': 'CCTV519',
-    'ATX013': 'CCTV508', 'ATX014': 'CCTV514', 'ATX015': 'CCTV522',
-    'ATX016': 'CCTV512'
-};
+// Feed types: 'image' (auto-refresh JPEG), 'stream' (embedded live player), 'tactical' (simulated ISR overlay)
+// All cameras reference publicly available OSINT webcam sources
+
+// ─── STRATEGIC CAMERA DATABASE ───
+// Curated positions at critical infrastructure, chokepoints, and conflict-adjacent areas.
+// feedUrl points to real public webcam snapshots/embeds where available.
+const MIDDLE_EAST_CAMERAS = [
+    // ── MARITIME CHOKEPOINTS ──
+    { id: 'ME001', name: 'Suez Canal — Port Said Entrance', lat: 31.2653, lon: 32.3019, status: 'ACTIVE', type: 'CHOKEPOINT', region: 'EGYPT', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/wIBSJMp8M_g?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME002', name: 'Suez Canal — Great Bitter Lake', lat: 30.3500, lon: 32.3700, status: 'ACTIVE', type: 'CHOKEPOINT', region: 'EGYPT', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
+    { id: 'ME003', name: 'Strait of Hormuz — Bandar Abbas', lat: 27.1832, lon: 56.2666, status: 'ACTIVE', type: 'CHOKEPOINT', region: 'IRAN', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
+    { id: 'ME004', name: 'Bab el-Mandeb — Perim Island', lat: 12.6550, lon: 43.4200, status: 'ACTIVE', type: 'CHOKEPOINT', region: 'YEMEN', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
+
+    // ── TURKEY / BOSPHORUS ──
+    { id: 'ME005', name: 'Istanbul — Bosphorus Bridge', lat: 41.0451, lon: 29.0343, status: 'ACTIVE', type: 'STRATEGIC', region: 'TURKEY', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/cPI7VCsgZXE?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME006', name: 'Istanbul — Galata Tower', lat: 41.0256, lon: 28.9744, status: 'ACTIVE', type: 'URBAN', region: 'TURKEY', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/VJxs6MCP-D4?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME007', name: 'Incirlik AB — Perimeter Approach', lat: 37.0021, lon: 35.4259, status: 'ACTIVE', type: 'MILITARY', region: 'TURKEY', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
+
+    // ── UAE / GULF STATES ──
+    { id: 'ME008', name: 'Dubai — Sheikh Zayed Road', lat: 25.2048, lon: 55.2708, status: 'ACTIVE', type: 'INFRASTRUCTURE', region: 'UAE', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/SzmJE31rYMw?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME009', name: 'Dubai — Jebel Ali Port', lat: 25.0145, lon: 55.0640, status: 'ACTIVE', type: 'PORT', region: 'UAE', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
+    { id: 'ME010', name: 'Abu Dhabi — Al Dhafra AB Approach', lat: 24.2500, lon: 54.5500, status: 'ACTIVE', type: 'MILITARY', region: 'UAE', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
+    { id: 'ME011', name: 'Doha — Al Udeid AB Perimeter', lat: 25.1173, lon: 51.3150, status: 'ACTIVE', type: 'MILITARY', region: 'QATAR', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
+    { id: 'ME012', name: 'Bahrain — Naval Support Activity', lat: 26.2361, lon: 50.5860, status: 'ACTIVE', type: 'MILITARY', region: 'BAHRAIN', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
+
+    // ── SAUDI ARABIA ──
+    { id: 'ME013', name: 'Riyadh — King Fahd Road', lat: 24.7136, lon: 46.6753, status: 'ACTIVE', type: 'INFRASTRUCTURE', region: 'SAUDI', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/ia6hI1YMWFI?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME014', name: 'Jeddah — Islamic Port', lat: 21.4858, lon: 39.1925, status: 'ACTIVE', type: 'PORT', region: 'SAUDI', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
+    { id: 'ME015', name: 'Mecca — Grand Mosque Perimeter', lat: 21.4225, lon: 39.8262, status: 'ACTIVE', type: 'CRITICAL', region: 'SAUDI', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/lXFKH3VPSsI?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+
+    // ── CONFLICT ZONES ──
+    { id: 'ME016', name: 'Baghdad — Green Zone', lat: 33.3120, lon: 44.3615, status: 'ACTIVE', type: 'CONFLICT', region: 'IRAQ', feedType: 'tactical', feedUrl: null, classification: 'TOP SECRET' },
+    { id: 'ME017', name: 'Baghdad — Route Irish (BIAP Rd)', lat: 33.2700, lon: 44.2300, status: 'ACTIVE', type: 'CONFLICT', region: 'IRAQ', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
+    { id: 'ME018', name: 'Basra — Shatt al-Arab Waterway', lat: 30.5200, lon: 47.7800, status: 'ACTIVE', type: 'PORT', region: 'IRAQ', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
+    { id: 'ME019', name: 'Damascus — Umayyad Square', lat: 33.5138, lon: 36.2765, status: 'DEGRADED', type: 'CONFLICT', region: 'SYRIA', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
+    { id: 'ME020', name: 'Aleppo — Citadel Sector', lat: 36.1990, lon: 37.1620, status: 'DEGRADED', type: 'CONFLICT', region: 'SYRIA', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
+    { id: 'ME021', name: 'Sanaa — Airport Ring Road', lat: 15.3694, lon: 44.2194, status: 'DEGRADED', type: 'CONFLICT', region: 'YEMEN', feedType: 'tactical', feedUrl: null, classification: 'TOP SECRET' },
+    { id: 'ME022', name: 'Aden — Port Approach', lat: 12.7855, lon: 45.0187, status: 'ACTIVE', type: 'PORT', region: 'YEMEN', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
+    { id: 'ME023', name: 'Hodeidah — Port Facility', lat: 14.7980, lon: 42.9540, status: 'DEGRADED', type: 'CONFLICT', region: 'YEMEN', feedType: 'tactical', feedUrl: null, classification: 'TOP SECRET' },
+
+    // ── ISRAEL / LEVANT ──
+    { id: 'ME024', name: 'Tel Aviv — Azrieli Skyline', lat: 32.0740, lon: 34.7920, status: 'ACTIVE', type: 'URBAN', region: 'ISRAEL', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/8ZA4GRNdu_0?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME025', name: 'Haifa — Port and Bay', lat: 32.8191, lon: 34.9983, status: 'ACTIVE', type: 'PORT', region: 'ISRAEL', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/Q_VbjN1p2fk?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME026', name: 'Jerusalem — Old City Walls', lat: 31.7767, lon: 35.2345, status: 'ACTIVE', type: 'CRITICAL', region: 'ISRAEL', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/1x_FGXLGD6Y?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+    { id: 'ME027', name: 'Beirut — Port District', lat: 33.9020, lon: 35.5180, status: 'ACTIVE', type: 'PORT', region: 'LEBANON', feedType: 'tactical', feedUrl: null, classification: 'RESTRICTED' },
+    { id: 'ME028', name: 'Amman — Downtown / Citadel', lat: 31.9539, lon: 35.9340, status: 'ACTIVE', type: 'URBAN', region: 'JORDAN', feedType: 'stream', feedUrl: 'https://www.youtube.com/embed/wlfbbkjODig?autoplay=1&mute=1', classification: 'UNCLASSIFIED' },
+
+    // ── IRAN ──
+    { id: 'ME029', name: 'Tehran — Azadi Tower', lat: 35.6997, lon: 51.3381, status: 'ACTIVE', type: 'URBAN', region: 'IRAN', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
+    { id: 'ME030', name: 'Isfahan — Uranium Conversion Facility', lat: 32.6546, lon: 51.6680, status: 'ACTIVE', type: 'NUCLEAR', region: 'IRAN', feedType: 'tactical', feedUrl: null, classification: 'TOP SECRET' },
+    { id: 'ME031', name: 'Bushehr — Nuclear Power Plant', lat: 28.8330, lon: 50.8850, status: 'ACTIVE', type: 'NUCLEAR', region: 'IRAN', feedType: 'tactical', feedUrl: null, classification: 'TOP SECRET' },
+    { id: 'ME032', name: 'Chabahar — Port', lat: 25.2919, lon: 60.6430, status: 'ACTIVE', type: 'PORT', region: 'IRAN', feedType: 'tactical', feedUrl: null, classification: 'SECRET' },
+];
 
 class TrafficCameraSystem {
     constructor() {
@@ -32,97 +72,9 @@ class TrafficCameraSystem {
     }
 
     async loadCameras() {
-        try {
-            const url = `${AUSTIN_CCTV_API}?$limit=${MAX_CAMS}&$where=camera_status='TURNED_ON'`;
-            const res = await fetch(`/api/traffic-cams?url=${encodeURIComponent(url)}`);
-            if (!res.ok) throw new Error(`Proxy returned ${res.status}`);
-            const data = await res.json();
-            if (Array.isArray(data) && data.length > 0) {
-                this.cameras = this._normalizeCameras(data);
-                if (this.cameras.length > 0) {
-                    console.log(`[TRAFFIC-CAM] Loaded ${this.cameras.length} Austin cameras via proxy`);
-                    return this.cameras;
-                }
-            }
-            throw new Error('Empty or unparseable response from proxy');
-        } catch (e) {
-            console.warn('[TRAFFIC-CAM] Proxy failed:', e.message, '— trying direct fetch');
-        }
-
-        // Fallback: try direct fetch (works if Austin API allows CORS)
-        try {
-            const url = `${AUSTIN_CCTV_API}?$limit=${MAX_CAMS}&$where=camera_status='TURNED_ON'`;
-            const res = await fetch(url);
-            if (res.ok) {
-                const data = await res.json();
-                if (Array.isArray(data) && data.length > 0) {
-                    this.cameras = this._normalizeCameras(data);
-                    console.log(`[TRAFFIC-CAM] Loaded ${this.cameras.length} Austin cameras (direct)`);
-                    return this.cameras;
-                }
-            }
-        } catch (e2) {
-            console.warn('[TRAFFIC-CAM] Direct fetch failed:', e2.message);
-        }
-
-        // Last resort: hardcoded fallback cameras
-        return this._loadFallbackCameras();
-    }
-
-    _normalizeCameras(data) {
-        return data
-            .filter(c => {
-                // Austin API uses GeoJSON: location.coordinates = [lon, lat]
-                if (c.location && c.location.coordinates) return true;
-                if (c.location_latitude && c.location_longitude) return true;
-                return false;
-            })
-            .map((c, i) => {
-                const id = c.camera_id || `cam_${i}`;
-                let lat, lon;
-                if (c.location && c.location.coordinates) {
-                    lon = parseFloat(c.location.coordinates[0]);
-                    lat = parseFloat(c.location.coordinates[1]);
-                } else {
-                    lat = parseFloat(c.location_latitude);
-                    lon = parseFloat(c.location_longitude);
-                }
-                return {
-                    id,
-                    name: (c.location_name || c.camera_name || `Camera ${i}`).trim(),
-                    lat,
-                    lon,
-                    status: c.camera_status || 'UNKNOWN',
-                    imageUrl: c.screenshot_address || c.camera_mfg_url || null,
-                    turn: c.turn_on_date || null,
-                    type: c.location_type || (c.primary_st_segment_id ? 'INTERSECTION' : 'CORRIDOR'),
-                    signal: c.signal_eng_area || null,
-                    council: c.council_district || null
-                };
-            });
-    }
-
-    _loadFallbackCameras() {
-        // Hardcoded Austin traffic camera hotspots with TxDOT snapshot URLs
-        this.cameras = [
-            { id: 'ATX001', name: 'I-35 @ Riverside Dr', lat: 30.2520, lon: -97.7380, status: 'ACTIVE', type: 'INTERSTATE', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX001}.jpg` },
-            { id: 'ATX002', name: 'MoPac @ Bee Cave Rd', lat: 30.2600, lon: -97.7950, status: 'ACTIVE', type: 'HIGHWAY', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX002}.jpg` },
-            { id: 'ATX003', name: 'I-35 @ 51st St', lat: 30.3030, lon: -97.7190, status: 'ACTIVE', type: 'INTERSTATE', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX003}.jpg` },
-            { id: 'ATX004', name: 'US 183 @ Burnet Rd', lat: 30.3700, lon: -97.7180, status: 'ACTIVE', type: 'HIGHWAY', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX004}.jpg` },
-            { id: 'ATX005', name: 'Congress Ave @ 6th St', lat: 30.2672, lon: -97.7431, status: 'ACTIVE', type: 'DOWNTOWN', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX005}.jpg` },
-            { id: 'ATX006', name: 'Lamar Blvd @ 38th St', lat: 30.3010, lon: -97.7505, status: 'ACTIVE', type: 'ARTERIAL', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX006}.jpg` },
-            { id: 'ATX007', name: 'I-35 @ Ben White Blvd', lat: 30.2295, lon: -97.7550, status: 'ACTIVE', type: 'INTERSTATE', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX007}.jpg` },
-            { id: 'ATX008', name: 'Airport Blvd @ I-35', lat: 30.3080, lon: -97.7125, status: 'ACTIVE', type: 'INTERCHANGE', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX008}.jpg` },
-            { id: 'ATX009', name: 'S 1st St @ Barton Springs', lat: 30.2620, lon: -97.7540, status: 'ACTIVE', type: 'DOWNTOWN', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX009}.jpg` },
-            { id: 'ATX010', name: 'E Cesar Chavez @ I-35', lat: 30.2600, lon: -97.7375, status: 'ACTIVE', type: 'INTERCHANGE', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX010}.jpg` },
-            { id: 'ATX011', name: 'Guadalupe St @ MLK Jr', lat: 30.2820, lon: -97.7420, status: 'ACTIVE', type: 'UNIVERSITY', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX011}.jpg` },
-            { id: 'ATX012', name: 'N Lamar @ 45th St', lat: 30.3100, lon: -97.7505, status: 'ACTIVE', type: 'ARTERIAL', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX012}.jpg` },
-            { id: 'ATX013', name: 'E 7th St @ Pleasant Valley', lat: 30.2660, lon: -97.7200, status: 'ACTIVE', type: 'EASTSIDE', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX013}.jpg` },
-            { id: 'ATX014', name: 'S Congress @ Oltorf', lat: 30.2450, lon: -97.7485, status: 'ACTIVE', type: 'ARTERIAL', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX014}.jpg` },
-            { id: 'ATX015', name: 'Parmer Ln @ MoPac', lat: 30.4190, lon: -97.7525, status: 'ACTIVE', type: 'HIGHWAY', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX015}.jpg` },
-            { id: 'ATX016', name: 'I-35 @ Rundberg Ln', lat: 30.3510, lon: -97.6920, status: 'ACTIVE', type: 'INTERSTATE', imageUrl: `${TXDOT_SNAPSHOT_BASE}${TXDOT_CCTV_IDS.ATX016}.jpg` },
-        ];
-        console.log('[TRAFFIC-CAM] Loaded fallback Austin camera set');
+        // Load the strategic Middle East camera database
+        this.cameras = MIDDLE_EAST_CAMERAS.map(c => ({ ...c }));
+        console.log(`[ISR-CAM] Loaded ${this.cameras.length} strategic surveillance nodes across Middle East AOR`);
         return this.cameras;
     }
 
@@ -132,29 +84,32 @@ class TrafficCameraSystem {
         this.cameras.forEach(cam => {
             if (this.cameraEntities[cam.id]) return;
 
+            const isActive = cam.status === 'ACTIVE';
+            const isDegraded = cam.status === 'DEGRADED';
+
             const entity = viewer.entities.add({
                 id: `tcam_${cam.id}`,
-                position: Cesium.Cartesian3.fromDegrees(cam.lon, cam.lat, 15),
+                position: Cesium.Cartesian3.fromDegrees(cam.lon, cam.lat, 50),
                 billboard: {
-                    image: this._createCameraSvg(cam.status === 'ACTIVE' || cam.status === 'TURNED_ON'),
-                    width: 20,
-                    height: 20,
+                    image: this._createCameraSvg(isActive, isDegraded, cam.type),
+                    width: 22,
+                    height: 22,
                     heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
                     disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                    scaleByDistance: new Cesium.NearFarScalar(1e3, 1.5, 5e6, 0.2),
+                    scaleByDistance: new Cesium.NearFarScalar(1e4, 1.5, 1e7, 0.3),
                     verticalOrigin: Cesium.VerticalOrigin.CENTER
                 },
                 label: {
                     text: cam.name,
                     font: '9px monospace',
-                    fillColor: Cesium.Color.fromCssColorString('#00e5ff'),
+                    fillColor: Cesium.Color.fromCssColorString(isDegraded ? '#ff9100' : '#00e5ff'),
                     outlineColor: Cesium.Color.BLACK,
                     outlineWidth: 2,
                     style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                    pixelOffset: new Cesium.Cartesian2(0, -14),
+                    pixelOffset: new Cesium.Cartesian2(0, -16),
                     disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                    scaleByDistance: new Cesium.NearFarScalar(1e3, 0.8, 2e6, 0.15),
-                    distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 200000),
+                    scaleByDistance: new Cesium.NearFarScalar(1e4, 0.8, 5e6, 0.15),
+                    distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 1500000),
                     show: false
                 }
             });
@@ -227,15 +182,26 @@ class TrafficCameraSystem {
         const panel = document.getElementById('camera-feed-panel');
         if (!panel) return;
 
-        const listHtml = this.cameras.slice(0, 20).map(cam => `
-            <div class="cam-item" data-cam-id="${cam.id}" onclick="window.TrafficCams.focusCamera('${cam.id}')">
-                <span class="cam-status ${cam.status === 'ACTIVE' || cam.status === 'TURNED_ON' ? 'cam-online' : 'cam-offline'}">●</span>
-                <span class="cam-name">${cam.name}</span>
-                <span class="cam-type">${cam.type}</span>
-            </div>
-        `).join('');
+        const typeColors = {
+            'CHOKEPOINT': '#ff2244', 'MILITARY': '#ff9100', 'CONFLICT': '#ff2244',
+            'NUCLEAR': '#ff00ff', 'PORT': '#00e5ff', 'STRATEGIC': '#ffe132',
+            'INFRASTRUCTURE': '#2ed573', 'URBAN': '#00e5ff', 'CRITICAL': '#ff9100'
+        };
 
-        panel.innerHTML = listHtml || '<div style="color:var(--text-dim); font-size:10px;">NO CAMERAS LOADED</div>';
+        const listHtml = this.cameras.map(cam => {
+            const color = typeColors[cam.type] || '#00e5ff';
+            const statusDot = cam.status === 'ACTIVE'
+                ? '<span class="cam-status cam-online">●</span>'
+                : '<span class="cam-status cam-offline">◐</span>';
+            return `
+            <div class="cam-item" data-cam-id="${cam.id}" onclick="window.TrafficCams.focusCamera('${cam.id}')">
+                ${statusDot}
+                <span class="cam-name">${cam.name}</span>
+                <span class="cam-type" style="color:${color}">${cam.type}</span>
+            </div>`;
+        }).join('');
+
+        panel.innerHTML = listHtml || '<div style="color:var(--text-dim); font-size:10px;">NO SURVEILLANCE NODES</div>';
     }
 
     focusCamera(camId) {
@@ -289,10 +255,13 @@ class TrafficCameraSystem {
         this.closePopup();
         this.selectedCamera = cam;
 
-        // Build the image URL with cache-bust for live refresh
-        const feedUrl = this._getFeedUrl(cam);
         const now = new Date();
         const ts = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+        const isStream = cam.feedType === 'stream' && cam.feedUrl;
+        const isTactical = cam.feedType === 'tactical' || !cam.feedUrl;
+        const latDir = cam.lat >= 0 ? 'N' : 'S';
+        const lonDir = cam.lon >= 0 ? 'E' : 'W';
+        const classColor = { 'UNCLASSIFIED': '#00ff41', 'RESTRICTED': '#ffe132', 'SECRET': '#ff9100', 'TOP SECRET': '#ff2244' }[cam.classification] || '#00e5ff';
 
         const overlay = document.createElement('div');
         overlay.id = 'cctv-popup-overlay';
@@ -301,61 +270,77 @@ class TrafficCameraSystem {
             <div class="cctv-popup" id="cctv-popup">
                 <div class="cctv-popup-header">
                     <div class="cctv-popup-title">
-                        <span class="cctv-popup-icon">📹</span>
-                        <span>CCTV FEED — ${this._escapeHtml(cam.name)}</span>
+                        <span class="cctv-popup-icon">📡</span>
+                        <span>ISR FEED — ${this._escapeHtml(cam.name)}</span>
                     </div>
                     <div class="cctv-popup-controls">
+                        <span class="cctv-classification-badge" style="color:${classColor};border-color:${classColor}">${this._escapeHtml(cam.classification || 'UNCLASSIFIED')}</span>
                         <span class="cctv-live-indicator" id="cctv-live-dot">● LIVE</span>
                         <button class="cctv-popup-close" id="cctv-popup-close" title="Close">&times;</button>
                     </div>
                 </div>
                 <div class="cctv-popup-body">
                     <div class="cctv-feed-container" id="cctv-feed-container">
-                        ${feedUrl
-                            ? `<img src="${feedUrl}" alt="${this._escapeHtml(cam.name)}" class="cctv-feed-img" id="cctv-feed-img" />`
-                            : ''}
+                        ${isStream
+                            ? `<iframe src="${cam.feedUrl}" class="cctv-feed-iframe" id="cctv-feed-iframe" allow="autoplay; encrypted-media" allowfullscreen frameborder="0"></iframe>`
+                            : isTactical
+                                ? this._buildTacticalOverlay(cam, ts)
+                                : `<img src="${cam.feedUrl}" alt="${this._escapeHtml(cam.name)}" class="cctv-feed-img" id="cctv-feed-img" />`
+                        }
                         <div class="cctv-feed-hud">
                             <div class="cctv-hud-top">
-                                <span>CAM ${this._escapeHtml(cam.id)}</span>
+                                <span>NODE ${this._escapeHtml(cam.id)} // ${this._escapeHtml(cam.region || '')}</span>
                                 <span id="cctv-hud-ts">${ts}</span>
                             </div>
-                            <div class="cctv-crosshair"></div>
+                            ${!isStream ? '<div class="cctv-crosshair"></div>' : ''}
                             <div class="cctv-hud-bottom">
-                                <span>${cam.lat.toFixed(5)}°N  ${Math.abs(cam.lon).toFixed(5)}°W</span>
-                                <span id="cctv-hud-refresh">REFRESH: 5s</span>
+                                <span>${Math.abs(cam.lat).toFixed(5)}°${latDir}  ${Math.abs(cam.lon).toFixed(5)}°${lonDir}</span>
+                                <span id="cctv-hud-refresh">${isStream ? 'STREAM: LIVE' : isTactical ? 'TACTICAL OVERLAY' : 'REFRESH: 5s'}</span>
                             </div>
                         </div>
-                        <div class="cctv-scanline"></div>
-                        ${!feedUrl ? `<div class="cctv-no-feed"><div class="cctv-static-noise"></div><span>ACQUIRING SIGNAL...</span></div>` : ''}
+                        ${!isStream ? '<div class="cctv-scanline"></div>' : ''}
                     </div>
                     <div class="cctv-info-panel">
-                        <div class="cctv-info-title">CAMERA INFORMATION</div>
+                        <div class="cctv-info-title">SURVEILLANCE NODE INFORMATION</div>
                         <div class="cctv-info-grid">
                             <div class="cctv-info-item">
-                                <span class="cctv-info-label">LOCATION</span>
+                                <span class="cctv-info-label">DESIGNATION</span>
                                 <span class="cctv-info-value">${this._escapeHtml(cam.name)}</span>
                             </div>
                             <div class="cctv-info-item">
                                 <span class="cctv-info-label">STATUS</span>
-                                <span class="cctv-info-value cctv-status-${(cam.status === 'ACTIVE' || cam.status === 'TURNED_ON') ? 'on' : 'off'}">
-                                    ${cam.status === 'ACTIVE' || cam.status === 'TURNED_ON' ? '● ONLINE' : '○ OFFLINE'}
+                                <span class="cctv-info-value cctv-status-${cam.status === 'ACTIVE' ? 'on' : 'off'}">
+                                    ${cam.status === 'ACTIVE' ? '● OPERATIONAL' : '◐ DEGRADED'}
                                 </span>
                             </div>
                             <div class="cctv-info-item">
-                                <span class="cctv-info-label">TYPE</span>
+                                <span class="cctv-info-label">CATEGORY</span>
                                 <span class="cctv-info-value">${this._escapeHtml(cam.type || 'GENERAL')}</span>
                             </div>
                             <div class="cctv-info-item">
                                 <span class="cctv-info-label">COORDINATES</span>
-                                <span class="cctv-info-value">${cam.lat.toFixed(5)}, ${cam.lon.toFixed(5)}</span>
+                                <span class="cctv-info-value">${Math.abs(cam.lat).toFixed(5)}°${latDir}, ${Math.abs(cam.lon).toFixed(5)}°${lonDir}</span>
                             </div>
-                            ${cam.signal ? `<div class="cctv-info-item"><span class="cctv-info-label">SIGNAL AREA</span><span class="cctv-info-value">${this._escapeHtml(cam.signal)}</span></div>` : ''}
-                            ${cam.council ? `<div class="cctv-info-item"><span class="cctv-info-label">DISTRICT</span><span class="cctv-info-value">${this._escapeHtml(String(cam.council))}</span></div>` : ''}
-                            ${cam.turn ? `<div class="cctv-info-item"><span class="cctv-info-label">ACTIVATED</span><span class="cctv-info-value">${this._escapeHtml(cam.turn)}</span></div>` : ''}
+                            <div class="cctv-info-item">
+                                <span class="cctv-info-label">REGION / AOR</span>
+                                <span class="cctv-info-value">${this._escapeHtml(cam.region || 'UNKNOWN')}</span>
+                            </div>
+                            <div class="cctv-info-item">
+                                <span class="cctv-info-label">FEED TYPE</span>
+                                <span class="cctv-info-value">${isStream ? 'LIVE VIDEO STREAM' : isTactical ? 'TACTICAL / SIMINT' : 'SNAPSHOT RELAY'}</span>
+                            </div>
+                            <div class="cctv-info-item">
+                                <span class="cctv-info-label">CLASSIFICATION</span>
+                                <span class="cctv-info-value" style="color:${classColor}">${this._escapeHtml(cam.classification || 'UNCLASSIFIED')}</span>
+                            </div>
                         </div>
                         <div class="cctv-info-msg" id="cctv-info-msg">
                             <span class="cctv-msg-icon">ℹ</span>
-                            Feed refreshes every 5 seconds. Image provided by Austin TxDOT / City of Austin Open Data.
+                            ${isStream
+                                ? 'Live video stream from OSINT source. Feed may have latency.'
+                                : isTactical
+                                    ? 'Tactical overlay — simulated ISR feed. Real sensor data requires SCI access.'
+                                    : 'Snapshot relay — image refreshes periodically from remote sensor.'}
                         </div>
                     </div>
                 </div>
@@ -374,66 +359,68 @@ class TrafficCameraSystem {
             if (e.key === 'Escape') this.closePopup();
         });
 
-        // Auto-refresh feed image every 5s for live effect
-        if (feedUrl) {
-            this._startPopupRefresh(cam);
-        } else {
-            // Try loading the image after a short delay (signal acquisition effect)
-            setTimeout(() => {
-                const url = this._getFeedUrl(cam);
-                if (url) {
-                    const container = document.getElementById('cctv-feed-container');
-                    const noFeed = container?.querySelector('.cctv-no-feed');
-                    if (noFeed) noFeed.remove();
-                    const img = document.createElement('img');
-                    img.src = url;
-                    img.alt = cam.name;
-                    img.className = 'cctv-feed-img';
-                    img.id = 'cctv-feed-img';
-                    container?.prepend(img);
-                    this._startPopupRefresh(cam);
-                    this._showInfoMsg('Signal acquired. Live feed active.');
-                } else {
-                    this._showInfoMsg('No live feed URL available for this camera. Showing tactical overlay.', 'warn');
-                }
-            }, 2000);
-        }
+        // Start timestamp update for all feed types
+        this._startPopupRefresh(cam);
 
         // Entrance animation
         requestAnimationFrame(() => overlay.classList.add('cctv-popup-visible'));
+        console.log(`[ISR] Opened feed: ${cam.name} [${cam.feedType}]`);
+    }
 
-        console.log(`[CCTV] Opened live feed: ${cam.name}`);
+    _buildTacticalOverlay(cam, ts) {
+        const statusColor = cam.status === 'ACTIVE' ? '#00ff41' : '#ff9100';
+        return `
+            <div class="cctv-tactical-feed">
+                <div class="cctv-static-noise"></div>
+                <div class="cctv-tactical-grid"></div>
+                <div class="cctv-tactical-center">
+                    <div class="cctv-tactical-icon">⬡</div>
+                    <div class="cctv-tactical-label" style="color:${statusColor}">${this._escapeHtml(cam.type)}</div>
+                    <div class="cctv-tactical-sublabel">${this._escapeHtml(cam.region || '')}</div>
+                    <div class="cctv-tactical-status" style="color:${statusColor}">
+                        ${cam.status === 'ACTIVE' ? '■ SENSOR ACTIVE' : '▲ SIGNAL DEGRADED'}
+                    </div>
+                    <div class="cctv-tactical-class" style="color:var(--neon-red)">
+                        CLASSIFICATION: ${this._escapeHtml(cam.classification || 'UNCLASSIFIED')}
+                    </div>
+                    <div class="cctv-tactical-note">RESTRICTED FEED — REQUIRES SCI CLEARANCE</div>
+                </div>
+            </div>`;
     }
 
     _startPopupRefresh(cam) {
         if (this.popupRefreshTimer) clearInterval(this.popupRefreshTimer);
         let refreshCount = 0;
         this.popupRefreshTimer = setInterval(() => {
-            const img = document.getElementById('cctv-feed-img');
             const tsEl = document.getElementById('cctv-hud-ts');
-            if (!img || !this.popup) {
-                clearInterval(this.popupRefreshTimer);
-                return;
-            }
+            if (!this.popup) { clearInterval(this.popupRefreshTimer); return; }
             refreshCount++;
-            const url = this._getFeedUrl(cam);
-            if (url) {
-                // Cache-bust by appending timestamp
-                img.src = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now();
-            }
+
+            // Update timestamp
             if (tsEl) {
                 const now = new Date();
                 tsEl.textContent = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
             }
-            // Flash the live indicator
+
+            // Flash live indicator
             const dot = document.getElementById('cctv-live-dot');
             if (dot) {
                 dot.classList.add('cctv-live-pulse');
                 setTimeout(() => dot.classList.remove('cctv-live-pulse'), 400);
             }
-            // Update refresh counter
+
+            // If image feed, refresh the image
+            if (cam.feedType === 'image' && cam.feedUrl) {
+                const img = document.getElementById('cctv-feed-img');
+                if (img) {
+                    img.src = cam.feedUrl + (cam.feedUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
+                }
+            }
+
             const refEl = document.getElementById('cctv-hud-refresh');
-            if (refEl) refEl.textContent = `FRAMES: ${refreshCount}`;
+            if (refEl && cam.feedType !== 'stream') {
+                refEl.textContent = `UPTIME: ${refreshCount * 5}s`;
+            }
         }, 5000);
     }
 
@@ -456,10 +443,7 @@ class TrafficCameraSystem {
     }
 
     _getFeedUrl(cam) {
-        // Priority: direct imageUrl from API data, then TxDOT mapping
-        if (cam.imageUrl) return cam.imageUrl;
-        const txdotId = TXDOT_CCTV_IDS[cam.id];
-        if (txdotId) return `${TXDOT_SNAPSHOT_BASE}${txdotId}.jpg`;
+        if (cam.feedUrl) return cam.feedUrl;
         return null;
     }
 
@@ -482,33 +466,38 @@ class TrafficCameraSystem {
         const viewer = document.getElementById('cam-feed-viewer');
         if (!viewer) return;
 
-        const feedUrl = this._getFeedUrl(cam);
+        const isStream = cam.feedType === 'stream' && cam.feedUrl;
+        const latDir = cam.lat >= 0 ? 'N' : 'S';
+        const lonDir = cam.lon >= 0 ? 'E' : 'W';
+
         viewer.innerHTML = `
             <div class="cam-viewer-header">
-                <span>FEED: ${this._escapeHtml(cam.name)}</span>
-                <span class="cam-live-badge">● LIVE</span>
+                <span>NODE: ${this._escapeHtml(cam.name)}</span>
+                <span class="cam-live-badge">${isStream ? '● STREAM' : '● ISR'}</span>
             </div>
             <div class="cam-viewer-body" style="cursor:pointer" onclick="window.TrafficCams.openPopup(window.TrafficCams.selectedCamera)">
-                ${feedUrl
-                    ? `<img src="${feedUrl}" alt="${this._escapeHtml(cam.name)}" class="cam-image" onerror="this.onerror=null;this.parentElement.innerHTML='<div class=cam-no-signal>NO SIGNAL — CLICK TO RETRY</div>'" />`
+                ${isStream
+                    ? `<div class="cam-simulated-feed" style="background:#0a0e14;color:var(--neon-green);display:flex;align-items:center;justify-content:center;font-size:10px;height:80px;">▶ CLICK TO OPEN LIVE STREAM</div>`
                     : `<div class="cam-simulated-feed">
                         <div class="cam-noise-overlay"></div>
                         <div class="cam-hud-overlay">
-                            <div>CAM: ${this._escapeHtml(cam.id)}</div>
-                            <div>${cam.lat.toFixed(4)}°N ${Math.abs(cam.lon).toFixed(4)}°W</div>
-                            <div>STATUS: ${cam.status}</div>
+                            <div>NODE: ${this._escapeHtml(cam.id)}</div>
+                            <div>${Math.abs(cam.lat).toFixed(4)}°${latDir} ${Math.abs(cam.lon).toFixed(4)}°${lonDir}</div>
+                            <div>STATUS: ${cam.status} | ${cam.type}</div>
                             <div class="cam-timestamp">${new Date().toISOString()}</div>
                         </div>
                     </div>`
                 }
-                <div style="text-align:center;font-size:8px;color:var(--neon-cyan);padding:2px;cursor:pointer;">▶ CLICK TO EXPAND LIVE VIEW</div>
+                <div style="text-align:center;font-size:8px;color:var(--neon-cyan);padding:2px;cursor:pointer;">▶ CLICK TO EXPAND ${isStream ? 'LIVE STREAM' : 'FEED'}</div>
             </div>
         `;
     }
 
-    _createCameraSvg(isActive) {
-        const color = isActive ? '#00e5ff' : '#666';
+    _createCameraSvg(isActive, isDegraded, type) {
+        const color = isDegraded ? '#ff9100' : isActive ? '#00e5ff' : '#666';
+        const ring = (type === 'MILITARY' || type === 'NUCLEAR') ? '#ff2244' : (type === 'CONFLICT') ? '#ff9100' : 'none';
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            ${ring !== 'none' ? `<circle cx="12" cy="12" r="11" fill="none" stroke="${ring}" stroke-width="1.5" opacity="0.6"/>` : ''}
             <rect x="2" y="6" width="14" height="12" rx="2" fill="${color}" fill-opacity="0.8" stroke="#fff" stroke-width="0.8"/>
             <polygon points="18,8 22,5 22,19 18,16" fill="${color}" fill-opacity="0.6" stroke="#fff" stroke-width="0.5"/>
             <circle cx="9" cy="12" r="3" fill="none" stroke="#fff" stroke-width="1" opacity="0.7"/>
@@ -532,11 +521,13 @@ class TrafficCameraSystem {
     }
 
     getStats() {
-        const active = this.cameras.filter(c => c.status === 'ACTIVE' || c.status === 'TURNED_ON').length;
+        const active = this.cameras.filter(c => c.status === 'ACTIVE').length;
+        const degraded = this.cameras.filter(c => c.status === 'DEGRADED').length;
         return {
             total: this.cameras.length,
             active,
-            offline: this.cameras.length - active,
+            degraded,
+            offline: this.cameras.length - active - degraded,
             visible: this.visible
         };
     }
