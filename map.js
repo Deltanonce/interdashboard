@@ -21,6 +21,29 @@ let orbitTarget = null;
 let orbitAngle = 0;
 let motionBlurStage = null;
 
+// CesiumJS PositionProperty wrapper: CallbackProperty does NOT implement
+// getValueInReferenceFrame(), which crashes PointVisualizer/PathVisualizer in
+// CesiumJS 1.116+.  This thin adapter implements the PositionProperty interface
+// so satellite entities render without fatal errors.
+class CallbackPositionProperty {
+    constructor(callback, isConstant) {
+        this._callback = callback;
+        this.isConstant = isConstant === true;
+        this.definitionChanged = new Cesium.Event();
+        this.referenceFrame = Cesium.ReferenceFrame.FIXED;
+    }
+    getValue(time, result) {
+        return this._callback(time, result);
+    }
+    getValueInReferenceFrame(time, referenceFrame, result) {
+        // All our satellite positions are already in FIXED frame
+        return this._callback(time, result);
+    }
+    equals(other) {
+        return this === other;
+    }
+}
+
 const alertSound = new Audio('assets/tactical_alert.mp3');
 const scanSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3');
 
@@ -296,7 +319,7 @@ function addSatelliteEntity(name, satrec) {
         id: id,
         name: name,
         description: 'Orbital Reconnaissance Asset',
-        position: new Cesium.CallbackProperty((time, result) => {
+        position: new CallbackPositionProperty((time, result) => {
             const jsDate = Cesium.JulianDate.toDate(time);
             const positionAndVelocity = satellite.propagate(satrec, jsDate);
             if (!positionAndVelocity.position) return undefined;

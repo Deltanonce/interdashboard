@@ -20,18 +20,36 @@ class TrafficCameraSystem {
         try {
             const url = `${AUSTIN_CCTV_API}?$limit=${MAX_CAMS}&$where=camera_status='TURNED_ON'`;
             const res = await fetch(`/api/traffic-cams?url=${encodeURIComponent(url)}`);
-            if (!res.ok) {
-                // Fallback: try direct fetch
-                return this._loadFallbackCameras();
-            }
+            if (!res.ok) throw new Error(`Proxy returned ${res.status}`);
             const data = await res.json();
-            this.cameras = this._normalizeCameras(data);
-            console.log(`[TRAFFIC-CAM] Loaded ${this.cameras.length} Austin cameras`);
-            return this.cameras;
+            if (Array.isArray(data) && data.length > 0) {
+                this.cameras = this._normalizeCameras(data);
+                console.log(`[TRAFFIC-CAM] Loaded ${this.cameras.length} Austin cameras via proxy`);
+                return this.cameras;
+            }
+            throw new Error('Empty response from proxy');
         } catch (e) {
-            console.warn('[TRAFFIC-CAM] API fetch failed, using fallback:', e.message);
-            return this._loadFallbackCameras();
+            console.warn('[TRAFFIC-CAM] Proxy failed:', e.message, '— trying direct fetch');
         }
+
+        // Fallback: try direct fetch (works if Austin API allows CORS)
+        try {
+            const url = `${AUSTIN_CCTV_API}?$limit=${MAX_CAMS}&$where=camera_status='TURNED_ON'`;
+            const res = await fetch(url);
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data) && data.length > 0) {
+                    this.cameras = this._normalizeCameras(data);
+                    console.log(`[TRAFFIC-CAM] Loaded ${this.cameras.length} Austin cameras (direct)`);
+                    return this.cameras;
+                }
+            }
+        } catch (e2) {
+            console.warn('[TRAFFIC-CAM] Direct fetch failed:', e2.message);
+        }
+
+        // Last resort: hardcoded fallback cameras
+        return this._loadFallbackCameras();
     }
 
     _normalizeCameras(data) {

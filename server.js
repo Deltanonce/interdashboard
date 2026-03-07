@@ -237,40 +237,56 @@ function logBriefing(ac) {
 }
 
 function proxyTrafficCams(req, res) {
-    const parsed = new URL(req.url, `http://localhost:${PORT}`);
-    const targetUrl = parsed.searchParams.get('url');
-    if (!targetUrl) {
-        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: 'Missing url parameter' }));
-        return;
-    }
-    // Only allow Austin open data domain
-    let parsedTarget;
-    try { parsedTarget = new URL(targetUrl); } catch {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Invalid URL' }));
-        return;
-    }
-    if (parsedTarget.hostname !== 'data.austintexas.gov') {
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Domain not allowed' }));
-        return;
-    }
-    const proxyReq = https.request(targetUrl, { timeout: 10000 }, (proxyRes) => {
-        const chunks = [];
-        proxyRes.on('data', c => chunks.push(c));
-        proxyRes.on('end', () => {
-            const body = Buffer.concat(chunks).toString('utf8');
-            res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-            res.end(body);
+    try {
+        const parsed = new URL(req.url, `http://localhost:${PORT}`);
+        const targetUrl = parsed.searchParams.get('url');
+        if (!targetUrl) {
+            res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ error: 'Missing url parameter' }));
+            return;
+        }
+        // Only allow Austin open data domain
+        let parsedTarget;
+        try { parsedTarget = new URL(targetUrl); } catch {
+            res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ error: 'Invalid URL' }));
+            return;
+        }
+        if (parsedTarget.hostname !== 'data.austintexas.gov') {
+            res.writeHead(403, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ error: 'Domain not allowed' }));
+            return;
+        }
+        console.log(`[PROXY] Traffic cams -> ${parsedTarget.pathname}`);
+        const proxyReq = https.request(targetUrl, { timeout: 10000 }, (proxyRes) => {
+            const chunks = [];
+            proxyRes.on('data', c => chunks.push(c));
+            proxyRes.on('end', () => {
+                const body = Buffer.concat(chunks).toString('utf8');
+                const status = proxyRes.statusCode >= 200 && proxyRes.statusCode < 300 ? 200 : proxyRes.statusCode;
+                res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                res.end(body);
+            });
         });
-    });
-    proxyReq.on('error', () => {
-        res.writeHead(502, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: 'Upstream traffic cam fetch failed' }));
-    });
-    proxyReq.on('timeout', () => { proxyReq.destroy(); });
-    proxyReq.end();
+        proxyReq.on('error', (err) => {
+            console.error('[PROXY] Traffic cams upstream error:', err.message);
+            if (!res.headersSent) {
+                res.writeHead(502, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                res.end(JSON.stringify({ error: 'Upstream traffic cam fetch failed' }));
+            }
+        });
+        proxyReq.on('timeout', () => {
+            console.warn('[PROXY] Traffic cams request timed out');
+            proxyReq.destroy();
+        });
+        proxyReq.end();
+    } catch (err) {
+        console.error('[PROXY] Traffic cams handler error:', err.message);
+        if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ error: 'Internal proxy error' }));
+        }
+    }
 }
 
 function handleProximityAlert(req, res) {
@@ -694,6 +710,13 @@ const server = http.createServer((req, res) => {
             if (url === '/api/generate-report') return generateReport(req, res);
             if (url === '/api/proximity-alert') return handleProximityAlert(req, res);
             if (url === '/api/traffic-cams') return proxyTrafficCams(req, res);
+
+            // Serve empty favicon to suppress browser 404
+            if (url === '/favicon.ico') {
+                res.writeHead(204);
+                res.end();
+                return;
+            }
 
             // ── SECURITY EXAMPLES ──
             if (url === '/api/admin/rotate-keys' && req.method === 'POST') {
