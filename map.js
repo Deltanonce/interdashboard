@@ -153,12 +153,16 @@ function setupSentinelSweep() {
             vec4 color = texture(colorTexture, v_textureCoordinates);
             vec2 center = vec2(0.5, 0.5);
             vec2 dir = v_textureCoordinates - center;
+            float dist = length(dir);
             float angle = atan(dir.y, dir.x);
-            float sweepAngle = mod(time * speedMultiplier, 6.28318) - 3.14159; 
-            float diff = abs(angle - sweepAngle);
-            if (diff < 0.05 || abs(diff - 6.28318) < 0.05) {
-                color.rgb += vec3(0.0, 0.5, 0.0);
-            }
+            float sweepAngle = mod(time * speedMultiplier * 0.5, 6.28318) - 3.14159;
+            float diff = angle - sweepAngle;
+            diff = mod(diff + 3.14159, 6.28318) - 3.14159;
+            float trail = smoothstep(0.35, 0.0, abs(diff)) * 0.06;
+            float edge = smoothstep(0.04, 0.0, abs(diff)) * 0.12;
+            float fade = smoothstep(0.6, 0.1, dist);
+            float sweep = (trail + edge) * fade;
+            color.rgb += vec3(sweep * 0.3, sweep, sweep * 0.7);
             fragColor = color;
         }
     `;

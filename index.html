@@ -19,6 +19,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/5.0.0/satellite.min.js"></script>
 
   <!-- Styles -->
+  <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="style-spy.css" />
 </head>
 
@@ -115,43 +116,140 @@
     <div class="map-crt-overlay"></div>
   </main>
 
-  <!-- Right: Strategic Briefing Panel -->
-  <aside class="spy-panel spy-right">
-  <div class="spy-panel-title">STRATEGIC BRIEFING</div>
-  <div id="briefing-feed" style="flex: 1; overflow-y: auto;">
-    <div class="briefing-item">
-      <span class="briefing-time">INITIALIZING...</span>
-      CONNECTING TO INTELLIGENCE DATABASE
-    </div>
-  </div>
-
-  <!-- System Monitor Panel -->
-  <div class="spy-panel-title" style="margin-top:20px;">📊 SYSTEM MONITOR</div>
-  <div class="telem-item" id="system-monitor-panel">
-    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-      <div id="monitor-status-dot" class="health-light"></div>
-      <span id="monitor-status-text" style="font-weight:bold; text-transform:uppercase;">INITIALIZING</span>
+  <!-- Right: Tabbed Analysis Panel -->
+  <aside class="spy-panel spy-right" style="padding:0; gap:0;">
+    <div class="analysis-tabs">
+      <button class="atab active" data-tab="tab-brief">BRIEF</button>
+      <button class="atab" data-tab="tab-threat">THREAT</button>
+      <button class="atab" data-tab="tab-iw">I&W</button>
+      <button class="atab" data-tab="tab-intel">INTEL</button>
+      <button class="atab" data-tab="tab-strategy">STRAT</button>
     </div>
 
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; font-size:11px;">
-      <div>
-        <span style="color:#888; display:block;">UPTIME</span>
-        <span id="mon-uptime" style="color:var(--neon-green);">-</span>
+    <!-- TAB: BRIEFING -->
+    <div class="tab-pane active" id="tab-brief">
+      <div class="spy-panel-title">STRATEGIC BRIEFING</div>
+      <div id="briefing-feed" style="flex: 1; overflow-y: auto;">
+        <div class="briefing-item">
+          <span class="briefing-time">INITIALIZING...</span>
+          CONNECTING TO INTELLIGENCE DATABASE
+        </div>
       </div>
-      <div>
-        <span style="color:#888; display:block;">REQ/MIN</span>
-        <span id="mon-rpm" style="color:var(--neon-green);">-</span>
-      </div>
-      <div>
-        <span style="color:#888; display:block;">ACTIVE ASSETS</span>
-        <span id="mon-assets" style="color:var(--neon-green);">-</span>
-      </div>
-      <div>
-        <span style="color:#888; display:block;">ERROR RATE</span>
-        <span id="mon-errors" style="color:var(--neon-red);">-</span>
+      <div class="spy-panel-title" style="margin-top:12px;">SYSTEM MONITOR</div>
+      <div class="telem-item" id="system-monitor-panel">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+          <div id="monitor-status-dot" class="health-light"></div>
+          <span id="monitor-status-text" style="font-weight:bold; text-transform:uppercase;">INITIALIZING</span>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; font-size:11px;">
+          <div><span style="color:var(--text-dim); display:block;">UPTIME</span><span id="mon-uptime" style="color:var(--neon-green);">-</span></div>
+          <div><span style="color:var(--text-dim); display:block;">REQ/MIN</span><span id="mon-rpm" style="color:var(--neon-green);">-</span></div>
+          <div><span style="color:var(--text-dim); display:block;">ACTIVE ASSETS</span><span id="mon-assets" style="color:var(--neon-green);">-</span></div>
+          <div><span style="color:var(--text-dim); display:block;">ERROR RATE</span><span id="mon-errors" style="color:var(--neon-red);">-</span></div>
+        </div>
       </div>
     </div>
-  </div>
+
+    <!-- TAB: THREAT ANALYSIS -->
+    <div class="tab-pane" id="tab-threat">
+      <div class="spy-panel-title">THREAT LEVEL</div>
+      <div style="text-align:center; padding:8px 0;">
+        <div id="threat-label" style="font-size:22px; font-weight:bold; letter-spacing:3px;">-</div>
+        <div id="threat-sub" style="font-size:10px; color:var(--text-dim); margin-top:2px;">-</div>
+        <div style="display:flex; gap:3px; justify-content:center; margin-top:8px;">
+          <div class="tbar" id="tb0"></div>
+          <div class="tbar" id="tb1"></div>
+          <div class="tbar" id="tb2"></div>
+          <div class="tbar" id="tb3"></div>
+          <div class="tbar" id="tb4"></div>
+        </div>
+      </div>
+      <div class="spy-panel-title" style="margin-top:8px;">ANALYST SUMMARY</div>
+      <div id="analyst-summary" style="font-size:10px; line-height:1.5; color:var(--text-secondary); padding:6px 0;"></div>
+      <div class="spy-panel-title" style="margin-top:8px;">TOP SCENARIOS</div>
+      <div id="top-scenarios-list"></div>
+      <div class="spy-panel-title" style="margin-top:8px;">DELTA TRACKER</div>
+      <div id="delta-list"></div>
+      <div class="spy-panel-title" style="margin-top:10px;">SCENARIO: MILITER</div>
+      <div id="group-militer"></div>
+      <div class="spy-panel-title" style="margin-top:10px;">SCENARIO: DIPLOMASI</div>
+      <div id="group-diplomasi"></div>
+      <div class="spy-panel-title" style="margin-top:10px;">SCENARIO: EKONOMI</div>
+      <div id="group-ekonomi"></div>
+      <div class="spy-panel-title" style="margin-top:10px;">SCENARIO: EKSTREM</div>
+      <div id="group-ekstrem"></div>
+    </div>
+
+    <!-- TAB: I&W MATRIX -->
+    <div class="tab-pane" id="tab-iw">
+      <div class="spy-panel-title">INDICATIONS & WARNINGS</div>
+      <div style="display:flex; gap:8px; font-size:10px; margin-bottom:8px;">
+        <span style="color:var(--neon-red);">TRIGGERED: <strong id="iw-triggered">0</strong></span>
+        <span style="color:var(--neon-amber);">WATCH: <strong id="iw-watch">0</strong></span>
+        <span style="color:var(--neon-green);">CLEAR: <strong id="iw-clear">0</strong></span>
+      </div>
+      <div style="display:flex; height:4px; gap:1px; margin-bottom:10px;">
+        <div id="iw-bar-t" style="background:var(--neon-red); height:100%; transition:width 0.3s;"></div>
+        <div id="iw-bar-w" style="background:var(--neon-amber); height:100%; transition:width 0.3s;"></div>
+        <div id="iw-bar-c" style="background:var(--neon-green); height:100%; transition:width 0.3s;"></div>
+      </div>
+      <div id="iw-table"></div>
+      <div class="spy-panel-title" style="margin-top:12px;">ACH — COMPETING HYPOTHESES</div>
+      <div id="ach-matrix" style="overflow-x:auto;"></div>
+      <div id="ach-scores" style="display:flex; flex-wrap:wrap; gap:4px; margin-top:8px;"></div>
+      <div id="ach-conclusion" style="font-size:10px; line-height:1.5; color:var(--text-secondary); margin-top:8px; padding:6px; border:1px solid var(--border); border-radius:3px;"></div>
+      <div class="spy-panel-title" style="margin-top:12px;">KEY ASSUMPTIONS</div>
+      <div id="assumptions-list"></div>
+      <div class="spy-panel-title" style="margin-top:12px;">INTELLIGENCE GAPS</div>
+      <div id="gap-summary-badge" style="font-size:10px; margin-bottom:6px;"></div>
+      <div id="gap-list"></div>
+    </div>
+
+    <!-- TAB: INTEL FEEDS -->
+    <div class="tab-pane" id="tab-intel">
+      <div class="spy-panel-title">OSINT FEED <span id="feed-count" style="float:right; color:var(--neon-cyan);"></span></div>
+      <div style="display:flex; gap:4px; margin-bottom:8px;">
+        <button class="ff-btn active" data-feed-filter="all" onclick="filterFeed('all')">ALL</button>
+        <button class="ff-btn" data-feed-filter="eskalasi" onclick="filterFeed('eskalasi')">ESK</button>
+        <button class="ff-btn" data-feed-filter="deeskalasi" onclick="filterFeed('deeskalasi')">DE-ESK</button>
+      </div>
+      <div id="osint-feed" style="max-height:200px; overflow-y:auto;"></div>
+      <div class="spy-panel-title" style="margin-top:10px;">PROPAGANDA DETECTION <span id="prop-count" style="float:right; color:var(--neon-red);"></span></div>
+      <div id="prop-feed" style="max-height:200px; overflow-y:auto;"></div>
+      <div class="spy-panel-title" style="margin-top:10px;">UNVERIFIED INTEL</div>
+      <div id="unverified-feed" style="max-height:150px; overflow-y:auto;"></div>
+      <div class="spy-panel-title" style="margin-top:10px;">SIGINT FUSION <span id="fusion-score-val" style="float:right; color:var(--neon-cyan);"></span></div>
+      <div id="source-grid" style="display:grid; gap:4px;"></div>
+      <div id="anomaly-list" style="margin-top:8px;"></div>
+      <div class="spy-panel-title" style="margin-top:10px;">PREDICTIVE ANALYTICS</div>
+      <div id="predictive-list"></div>
+    </div>
+
+    <!-- TAB: STRATEGY -->
+    <div class="tab-pane" id="tab-strategy">
+      <div class="spy-panel-title">GAME THEORY — <span id="pv-label">PAYOFF MATRIX</span></div>
+      <div style="display:flex; gap:4px; margin-bottom:8px;">
+        <button class="pv-btn active" onclick="setPerspective('iran', this)">IRAN</button>
+        <button class="pv-btn" onclick="setPerspective('israel', this)">ISRAEL</button>
+        <button class="pv-btn" onclick="setPerspective('us', this)">US</button>
+        <button class="pv-btn" onclick="setPerspective('china', this)">CHINA</button>
+      </div>
+      <div id="payoff-matrix"></div>
+      <div id="nash-info" style="font-size:10px; color:var(--text-secondary); margin-top:6px;"></div>
+      <div id="dominant-strategy" style="font-size:10px; color:var(--neon-amber); margin-top:4px;"></div>
+      <div class="spy-panel-title" style="margin-top:10px;">WARGAME SIMULATIONS</div>
+      <div id="wargame-list"></div>
+      <div class="spy-panel-title" style="margin-top:10px;">NET ASSESSMENT</div>
+      <div id="radar-chart" style="width:100%;"></div>
+      <div id="netassess-table"></div>
+      <div id="netassess-summary" style="font-size:10px; line-height:1.5; color:var(--text-secondary); margin-top:6px;"></div>
+      <div class="spy-panel-title" style="margin-top:10px;">RISK CONE (PROJECTION)</div>
+      <div id="cone-container" style="overflow-x:auto;"></div>
+      <div class="spy-panel-title" style="margin-top:10px;">ESCALATION CHRONOLOGY</div>
+      <div id="chronology-container"></div>
+      <div class="spy-panel-title" style="margin-top:10px;">SNAPSHOT HISTORY</div>
+      <div id="snapshot-list"></div>
+    </div>
   </aside>
   <script src="error-handler.js"></script>
   <script src="dom-cache.js"></script>
@@ -385,6 +483,27 @@ CONFIDENTIAL // RAM-ONLY LOG // ZERO FOOTPRINT
 
     setInterval(updateMonitor, 10000);
     updateMonitor();
+
+    // Tab switching logic
+    document.querySelectorAll('.atab').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const targetId = this.getAttribute('data-tab');
+        document.querySelectorAll('.atab').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        this.classList.add('active');
+        const pane = document.getElementById(targetId);
+        if (pane) pane.classList.add('active');
+      });
+    });
+
+    // Challenge button delegation
+    document.addEventListener('click', function(e) {
+      const btn = e.target.closest('.btn-challenge');
+      if (btn) {
+        const id = btn.getAttribute('data-challenge-id');
+        if (typeof toggleChallenge === 'function') toggleChallenge(id);
+      }
+    });
   </script>
 </body>
 </html>

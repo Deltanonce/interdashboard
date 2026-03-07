@@ -10,7 +10,39 @@
   --glass-border-bright: rgba(0, 255, 65, 0.35);
   --text-dim: rgba(0, 255, 65, 0.5);
   --panel-radius: 0px;
+  /* Analysis component variables (from style.css compatibility) */
+  --accent-cyan: #00e5ff;
+  --accent-red: #ff2244;
+  --accent-orange: #ff9100;
+  --accent-yellow: #ffe132;
+  --accent-green: #00ff41;
+  --accent-purple: #c882ff;
+  --accent-amber: #ffb000;
+  --text-primary: #c0e8cc;
+  --text-secondary: #6a9a7a;
+  --font-data: 'Share Tech Mono', monospace;
+  --font-display: 'Share Tech Mono', monospace;
+  --font-body: 'Share Tech Mono', monospace;
+  --threat-low: #00ff41;
+  --threat-med: #ffe132;
+  --threat-wsp: #ffb000;
+  --threat-hgh: #ff6600;
+  --threat-crt: #ff2244;
+  --bg-card: rgba(2, 8, 16, 0.6);
+  --bg-card-hover: rgba(5, 15, 25, 0.8);
+  --border: rgba(0, 255, 65, 0.12);
+  --border-bright: rgba(0, 255, 65, 0.25);
 }
+
+/* Override style.css layout-breaking declarations */
+body.spy-sim #satellite-map {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  inset: auto !important;
+}
+body.spy-sim .cesium-viewer-bottom { display: none !important; }
+body.spy-sim .cesium-viewer .cesium-widget-credits { display: none !important; }
 
 body.spy-sim {
   background: radial-gradient(ellipse at 50% 50%, #06101a 0%, var(--bg-space) 70%);
@@ -19,7 +51,7 @@ body.spy-sim {
   margin: 0;
   overflow: hidden;
   display: grid;
-  grid-template-columns: 300px 1fr 300px;
+  grid-template-columns: 280px 1fr 360px;
   grid-template-rows: 44px 1fr;
   height: 100vh;
   gap: 0px;
@@ -93,7 +125,8 @@ body.spy-sim ::-webkit-scrollbar-thumb { background: rgba(0,255,65,0.3); border-
 .spy-right { 
   grid-column: 3; 
   grid-row: 2; 
-  border-left: 1px solid var(--glass-border); 
+  border-left: 1px solid var(--glass-border);
+  overflow: hidden;
 }
 
 /* Map Area */
@@ -675,3 +708,341 @@ body.spy-sim ::-webkit-scrollbar-thumb { background: rgba(0,255,65,0.3); border-
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 8px rgba(0, 255, 65, 0.1);
   backdrop-filter: blur(16px);
 }
+
+/* ═══════════════════════════════════════════
+   TABBED ANALYSIS PANEL
+   ═══════════════════════════════════════════ */
+.analysis-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--glass-border);
+  background: rgba(0, 5, 0, 0.4);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.atab {
+  flex: 1;
+  padding: 8px 4px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-transform: uppercase;
+}
+.atab:hover { color: var(--neon-green); background: rgba(0, 255, 65, 0.04); }
+.atab.active {
+  color: var(--neon-green);
+  border-bottom-color: var(--neon-green);
+  background: rgba(0, 255, 65, 0.06);
+}
+.tab-pane {
+  display: none;
+  padding: 10px 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+.tab-pane.active { display: block; }
+
+/* Feed filter buttons */
+.ff-btn {
+  background: rgba(0, 255, 65, 0.05);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ff-btn:hover, .ff-btn.active {
+  color: var(--neon-green);
+  border-color: var(--neon-green);
+  background: rgba(0, 255, 65, 0.1);
+}
+
+/* Perspective buttons */
+.pv-btn {
+  background: rgba(0, 255, 65, 0.05);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pv-btn:hover, .pv-btn.active {
+  color: var(--neon-cyan);
+  border-color: var(--neon-cyan);
+  background: rgba(0, 229, 255, 0.08);
+}
+
+/* Threat bars */
+.tbar {
+  width: 24px; height: 10px;
+  background: rgba(0, 255, 65, 0.1);
+  border: 1px solid rgba(0, 255, 65, 0.15);
+  transition: all 0.3s ease;
+}
+.tbar.active-low { background: var(--threat-low); box-shadow: 0 0 4px var(--threat-low); }
+.tbar.active-med { background: var(--threat-med); box-shadow: 0 0 4px var(--threat-med); }
+.tbar.active-wsp { background: var(--threat-wsp); box-shadow: 0 0 4px var(--threat-wsp); }
+.tbar.active-hgh { background: var(--threat-hgh); box-shadow: 0 0 4px var(--threat-hgh); }
+.tbar.active-crt { background: var(--threat-crt); box-shadow: 0 0 4px var(--threat-crt); }
+
+/* ═══════════════════════════════════════════
+   ANALYSIS COMPONENT OVERRIDES (spy-sim)
+   ═══════════════════════════════════════════ */
+
+/* Scenarios */
+body.spy-sim .scenario-item {
+  padding: 8px;
+  border: 1px solid var(--border);
+  margin-bottom: 6px;
+  background: var(--bg-card);
+  font-size: 10px;
+  transition: border-color 0.2s;
+}
+body.spy-sim .scenario-item:hover { border-color: var(--border-bright); }
+body.spy-sim .scenario-header { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+body.spy-sim .scenario-name { font-size: 10px; line-height: 1.3; color: var(--text-primary); flex: 1; min-width: 100px; }
+body.spy-sim .scenario-prob { font-family: var(--font-data); font-size: 12px; font-weight: bold; white-space: nowrap; }
+body.spy-sim .scenario-delta { font-family: var(--font-data); font-size: 10px; }
+body.spy-sim .scenario-delta.pos { color: var(--accent-red); }
+body.spy-sim .scenario-delta.neg { color: var(--accent-green); }
+body.spy-sim .bar-container { height: 4px; background: rgba(255,255,255,0.06); margin: 4px 0; position: relative; }
+body.spy-sim .bar-baseline { position: absolute; height: 100%; background: rgba(255,255,255,0.08); }
+body.spy-sim .bar-current { position: absolute; height: 100%; transition: width 0.5s ease; }
+body.spy-sim .bar-diplomatik { background: var(--accent-cyan); }
+body.spy-sim .bar-militer { background: var(--accent-red); }
+body.spy-sim .bar-ekonomi { background: var(--accent-yellow); }
+body.spy-sim .bar-ekstrem { background: var(--accent-purple); }
+body.spy-sim .dst-row { display: flex; gap: 4px; font-size: 9px; color: var(--text-dim); margin-top: 3px; }
+body.spy-sim .dst-label { opacity: 0.6; }
+body.spy-sim .dst-sep { opacity: 0.3; }
+body.spy-sim .dst-high-unc { color: var(--accent-red); }
+body.spy-sim .dst-med-unc { color: var(--accent-orange); }
+body.spy-sim .scenario-footer { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; align-items: center; }
+body.spy-sim .tag { font-size: 8px; padding: 1px 4px; border: 1px solid rgba(255,255,255,0.1); color: var(--text-dim); text-transform: uppercase; }
+body.spy-sim .tag.eskalasi { border-color: rgba(255, 34, 68, 0.3); color: var(--accent-red); }
+body.spy-sim .tag.deeskalasi { border-color: rgba(0, 255, 65, 0.3); color: var(--accent-green); }
+body.spy-sim .tag.tinggi { border-color: rgba(255, 100, 0, 0.3); color: var(--accent-orange); }
+body.spy-sim .conf-badge { font-size: 8px; padding: 1px 4px; margin-left: auto; }
+body.spy-sim .conf-badge.high { color: var(--accent-green); }
+body.spy-sim .conf-badge.med { color: var(--accent-yellow); }
+body.spy-sim .conf-badge.low { color: var(--accent-orange); }
+body.spy-sim .conf-badge.spec { color: var(--accent-purple); }
+body.spy-sim .btn-challenge {
+  width: 100%; margin-top: 4px; padding: 4px; background: rgba(255, 34, 68, 0.05);
+  border: 1px solid rgba(255, 34, 68, 0.2); color: var(--accent-red);
+  font-family: var(--font-data); font-size: 9px; cursor: pointer; transition: all 0.15s;
+}
+body.spy-sim .btn-challenge:hover { background: rgba(255, 34, 68, 0.12); }
+body.spy-sim .challenge-box {
+  display: none; padding: 6px 8px; margin-top: 4px; font-size: 9px; line-height: 1.4;
+  background: rgba(255, 34, 68, 0.04); border-left: 2px solid var(--accent-red); color: var(--text-secondary);
+}
+body.spy-sim .challenge-box.open { display: block; }
+
+/* Delta tracker */
+body.spy-sim .delta-item { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 10px; }
+body.spy-sim .delta-arrow { font-size: 10px; }
+body.spy-sim .delta-arrow.up { color: var(--accent-red); }
+body.spy-sim .delta-arrow.down { color: var(--accent-green); }
+body.spy-sim .delta-label { flex: 1; color: var(--text-secondary); font-size: 9px; }
+body.spy-sim .delta-value { font-family: var(--font-data); }
+body.spy-sim .delta-value.pos { color: var(--accent-red); }
+body.spy-sim .delta-value.neg { color: var(--accent-green); }
+
+/* I&W Matrix */
+body.spy-sim .iw-category { margin-bottom: 10px; }
+body.spy-sim .iw-cat-title { font-size: 10px; color: var(--neon-amber); font-weight: bold; letter-spacing: 1px; padding: 4px 0; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+body.spy-sim .iw-row { display: grid; grid-template-columns: 20px 42px 1fr 60px 50px 20px; gap: 4px; align-items: center; padding: 3px 0; font-size: 9px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+body.spy-sim .iw-row.header { color: var(--text-dim); font-weight: bold; font-size: 8px; }
+body.spy-sim .iw-dot { width: 8px; height: 8px; border-radius: 50%; }
+body.spy-sim .iw-dot.triggered { background: var(--accent-red); box-shadow: 0 0 4px var(--accent-red); }
+body.spy-sim .iw-dot.watch { background: var(--accent-orange); }
+body.spy-sim .iw-dot.clear { background: var(--accent-green); opacity: 0.5; }
+body.spy-sim .iw-cr { color: var(--text-dim); font-family: var(--font-data); }
+body.spy-sim .iw-name { color: var(--text-primary); font-size: 9px; line-height: 1.2; }
+body.spy-sim .iw-threshold { color: var(--text-dim); font-family: var(--font-data); }
+body.spy-sim .iw-reading { font-family: var(--font-data); }
+body.spy-sim .iw-reading.triggered { color: var(--accent-red); font-weight: bold; }
+body.spy-sim .iw-reading.watch { color: var(--accent-orange); }
+body.spy-sim .iw-reading.clear { color: var(--accent-green); }
+body.spy-sim .iw-trend { font-family: var(--font-data); text-align: center; }
+body.spy-sim .iw-trend.up { color: var(--accent-red); }
+body.spy-sim .iw-trend.down { color: var(--accent-green); }
+body.spy-sim .iw-trend.flat { color: var(--text-dim); }
+
+/* ACH Matrix */
+body.spy-sim .ach-table { width: 100%; border-collapse: collapse; font-size: 8px; }
+body.spy-sim .ach-table th { padding: 4px 3px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); font-size: 8px; text-align: center; }
+body.spy-sim .ach-table th.winner { color: var(--accent-green); border-color: rgba(0, 255, 65, 0.3); }
+body.spy-sim .ach-table td { padding: 3px; border: 1px solid rgba(255,255,255,0.05); text-align: center; font-family: var(--font-data); font-size: 9px; }
+body.spy-sim .ach-table td.ev-label { text-align: left; font-size: 8px; color: var(--text-secondary); line-height: 1.3; }
+body.spy-sim .ach-table td.ac { color: var(--accent-green); background: rgba(0, 255, 65, 0.04); }
+body.spy-sim .ach-table td.ai { color: var(--accent-red); background: rgba(255, 34, 68, 0.04); }
+body.spy-sim .ach-table td.an { color: var(--text-dim); }
+body.spy-sim .ach-score-item { text-align: center; padding: 3px 6px; font-size: 9px; }
+body.spy-sim .ach-score-val { font-family: var(--font-data); color: var(--text-secondary); }
+body.spy-sim .ach-score-val.best { color: var(--accent-green); font-weight: bold; }
+body.spy-sim .ach-score-name { font-size: 8px; color: var(--text-dim); }
+
+/* Assumptions */
+body.spy-sim .ka-item { padding: 6px 8px; border: 1px solid var(--border); margin-bottom: 4px; background: var(--bg-card); font-size: 10px; }
+body.spy-sim .ka-item.ka-violated { border-color: rgba(255, 34, 68, 0.3); background: rgba(255, 34, 68, 0.03); }
+body.spy-sim .ka-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
+body.spy-sim .ka-id { font-family: var(--font-data); color: var(--text-dim); font-size: 9px; }
+body.spy-sim .ka-toggle-wrap { display: flex; align-items: center; gap: 4px; font-size: 9px; }
+body.spy-sim .ka-checkbox { accent-color: var(--neon-green); }
+body.spy-sim .ka-toggle-label { color: var(--accent-green); font-size: 9px; }
+body.spy-sim .ka-item.ka-violated .ka-toggle-label { color: var(--accent-red); }
+body.spy-sim .ka-text { color: var(--text-primary); line-height: 1.3; font-size: 10px; }
+body.spy-sim .ka-text-violated { text-decoration: line-through; opacity: 0.6; }
+body.spy-sim .ka-impact-hint { font-size: 9px; color: var(--accent-orange); margin-top: 3px; }
+
+/* Intel Gaps */
+body.spy-sim .gap-item { padding: 6px 8px; border: 1px solid var(--border); margin-bottom: 4px; background: var(--bg-card); cursor: pointer; transition: border-color 0.15s; }
+body.spy-sim .gap-item:hover { border-color: var(--border-bright); }
+body.spy-sim .gap-item.gap-closed { opacity: 0.5; }
+body.spy-sim .gap-header { display: flex; justify-content: space-between; align-items: center; gap: 4px; font-size: 9px; margin-bottom: 3px; }
+body.spy-sim .gap-id { font-family: var(--font-data); color: var(--text-dim); }
+body.spy-sim .gap-priority { font-size: 8px; font-weight: bold; }
+body.spy-sim .gap-status { font-family: var(--font-data); font-size: 9px; }
+body.spy-sim .gap-question { font-size: 10px; line-height: 1.3; color: var(--text-primary); }
+body.spy-sim .gap-footer { display: flex; justify-content: space-between; margin-top: 3px; font-size: 8px; color: var(--text-dim); }
+
+/* News items */
+body.spy-sim .news-item { display: block; padding: 6px 8px; border: 1px solid var(--border); margin-bottom: 4px; background: var(--bg-card); text-decoration: none; transition: border-color 0.15s; }
+body.spy-sim .news-item:hover { border-color: var(--border-bright); }
+body.spy-sim .news-header { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 3px; align-items: center; }
+body.spy-sim .news-time-badge { font-size: 8px; color: var(--text-dim); font-family: var(--font-data); }
+body.spy-sim .news-impact { font-size: 8px; padding: 1px 4px; }
+body.spy-sim .news-impact.eskalasi { color: var(--accent-red); border: 1px solid rgba(255, 34, 68, 0.3); }
+body.spy-sim .news-impact.deeskalasi { color: var(--accent-green); border: 1px solid rgba(0, 255, 65, 0.3); }
+body.spy-sim .intel-badge { font-size: 8px; color: var(--accent-cyan); padding: 1px 3px; border: 1px solid rgba(0, 229, 255, 0.2); }
+body.spy-sim .credibility-score { font-size: 8px; font-family: var(--font-data); }
+body.spy-sim .credibility-score.high { color: var(--accent-green); }
+body.spy-sim .credibility-score.med { color: var(--accent-yellow); }
+body.spy-sim .credibility-score.low { color: var(--accent-red); }
+body.spy-sim .news-source { font-size: 8px; color: var(--text-dim); margin-left: auto; }
+body.spy-sim .news-headline { font-size: 10px; color: var(--text-primary); line-height: 1.3; margin-bottom: 3px; }
+body.spy-sim .news-analysis { font-size: 9px; color: var(--text-dim); line-height: 1.3; }
+
+/* Propaganda */
+body.spy-sim .prop-item { padding: 6px 8px; border: 1px solid rgba(255, 34, 68, 0.15); margin-bottom: 4px; background: rgba(255, 34, 68, 0.02); }
+body.spy-sim .prop-item-header { display: flex; justify-content: space-between; margin-bottom: 3px; }
+body.spy-sim .prop-flag { font-size: 8px; color: var(--accent-red); font-weight: bold; letter-spacing: 0.5px; }
+body.spy-sim .prop-headline { font-size: 9px; color: var(--text-primary); line-height: 1.3; margin-bottom: 3px; }
+body.spy-sim .prop-analysis { font-size: 9px; color: var(--text-dim); line-height: 1.3; }
+
+/* Unverified */
+body.spy-sim .uv-item { padding: 6px 8px; border: 1px dashed rgba(255, 176, 0, 0.2); margin-bottom: 4px; position: relative; }
+body.spy-sim .uv-watermark { position: absolute; top: 2px; right: 4px; font-size: 7px; color: rgba(255, 176, 0, 0.3); letter-spacing: 2px; }
+body.spy-sim .uv-label { font-size: 8px; color: var(--accent-orange); font-weight: bold; }
+body.spy-sim .uv-headline { font-size: 9px; color: var(--text-primary); line-height: 1.3; margin: 3px 0; }
+body.spy-sim .uv-impact { font-size: 9px; color: var(--text-dim); }
+
+/* SIGINT source cards */
+body.spy-sim .source-card { padding: 6px; border: 1px solid var(--border); background: var(--bg-card); margin-bottom: 3px; }
+body.spy-sim .sc-header { display: flex; justify-content: space-between; margin-bottom: 3px; }
+body.spy-sim .sc-name { font-size: 9px; color: var(--text-primary); }
+body.spy-sim .sc-tier { font-size: 8px; padding: 1px 4px; }
+body.spy-sim .sc-tier.t1 { color: var(--accent-green); border: 1px solid rgba(0, 255, 65, 0.2); }
+body.spy-sim .sc-tier.t2 { color: var(--accent-yellow); border: 1px solid rgba(255, 225, 50, 0.2); }
+body.spy-sim .sc-strength-wrap { display: flex; align-items: center; gap: 4px; }
+body.spy-sim .sc-str-bar { flex: 1; height: 3px; background: rgba(255,255,255,0.06); }
+body.spy-sim .sc-str-fill { height: 100%; transition: width 0.3s; }
+body.spy-sim .sc-str-pct { font-size: 8px; font-family: var(--font-data); color: var(--text-dim); min-width: 24px; }
+body.spy-sim .sc-meta { font-size: 8px; color: var(--text-dim); margin-top: 2px; }
+body.spy-sim .sc-ping { font-size: 8px; color: var(--text-dim); margin-top: 2px; display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+body.spy-sim .sc-badge { font-size: 7px; padding: 0 3px; border: 1px solid rgba(0, 229, 255, 0.2); color: var(--accent-cyan); }
+body.spy-sim .anomaly-item { padding: 4px 6px; border-left: 2px solid var(--accent-orange); font-size: 9px; color: var(--text-secondary); margin-bottom: 4px; }
+body.spy-sim .anom-src { color: var(--accent-orange); font-weight: bold; }
+
+/* Predictive */
+body.spy-sim .pred-item { padding: 6px 8px; border: 1px solid var(--border); margin-bottom: 4px; background: var(--bg-card); }
+body.spy-sim .pred-label { font-size: 10px; color: var(--text-primary); line-height: 1.3; margin-bottom: 3px; }
+body.spy-sim .pred-conf { font-family: var(--font-data); font-size: 10px; }
+body.spy-sim .pred-conf.high { color: var(--accent-red); }
+body.spy-sim .pred-conf.med { color: var(--accent-orange); }
+body.spy-sim .pred-conf.low { color: var(--accent-green); }
+
+/* Payoff matrix */
+body.spy-sim .payoff-grid { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 2px; font-size: 9px; }
+body.spy-sim .payoff-label { padding: 4px; font-size: 8px; color: var(--text-dim); display: flex; align-items: center; }
+body.spy-sim .payoff-label.col { justify-content: center; font-weight: bold; color: var(--accent-cyan); }
+body.spy-sim .payoff-label.row { font-weight: bold; color: var(--accent-red); }
+body.spy-sim .payoff-cell { padding: 6px; border: 1px solid var(--border); background: var(--bg-card); }
+body.spy-sim .payoff-cell.nash { border-color: rgba(255, 225, 50, 0.3); background: rgba(255, 225, 50, 0.03); }
+body.spy-sim .payoff-val { font-family: var(--font-data); font-size: 10px; }
+body.spy-sim .payoff-val.pos { color: var(--accent-green); }
+body.spy-sim .payoff-val.neg { color: var(--accent-red); }
+body.spy-sim .payoff-desc { font-size: 8px; color: var(--text-dim); margin-top: 2px; }
+
+/* Wargame */
+body.spy-sim .wargame-item { padding: 6px 8px; border: 1px solid var(--border); margin-bottom: 4px; background: var(--bg-card); }
+body.spy-sim .wg-name { font-size: 9px; color: var(--text-primary); margin-bottom: 4px; line-height: 1.3; }
+body.spy-sim .wg-utility { display: flex; align-items: center; gap: 4px; margin-bottom: 2px; }
+body.spy-sim .wg-bar { flex: 1; height: 4px; background: rgba(255,255,255,0.06); }
+body.spy-sim .wg-fill { height: 100%; transition: width 0.3s; }
+body.spy-sim .wg-score { font-family: var(--font-data); font-size: 9px; min-width: 20px; }
+
+/* Net Assessment */
+body.spy-sim .na-table { width: 100%; border-collapse: collapse; font-size: 9px; }
+body.spy-sim .na-table th { padding: 4px; font-size: 8px; color: var(--text-dim); text-align: left; border-bottom: 1px solid var(--border); }
+body.spy-sim .na-table td { padding: 3px 4px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+body.spy-sim .na-dim { color: var(--text-secondary); font-size: 8px; }
+body.spy-sim .na-bar { display: inline-block; width: 40px; height: 4px; background: rgba(255,255,255,0.06); vertical-align: middle; }
+body.spy-sim .na-fill { height: 100%; }
+body.spy-sim .na-fill.iran { background: #cc2244; }
+body.spy-sim .na-fill.israel { background: #3399ff; }
+body.spy-sim .na-fill.us { background: #00aa55; }
+
+/* Risk Cone */
+body.spy-sim .cone-timeline { overflow-x: auto; }
+body.spy-sim .cone-track { display: flex; gap: 4px; min-width: 100%; }
+body.spy-sim .cone-column { flex: 1; min-width: 140px; }
+body.spy-sim .cone-month { font-size: 9px; color: var(--accent-cyan); font-weight: bold; padding: 4px; text-align: center; border-bottom: 1px solid var(--border); }
+body.spy-sim .cone-lane { padding: 6px; font-size: 8px; line-height: 1.3; border: 1px solid var(--border); margin-top: 2px; }
+body.spy-sim .cone-lane.worst { border-left: 2px solid var(--accent-red); color: var(--accent-red); background: rgba(255, 34, 68, 0.03); }
+body.spy-sim .cone-lane.likely { border-left: 2px solid var(--accent-yellow); color: var(--text-primary); background: rgba(255, 225, 50, 0.02); }
+body.spy-sim .cone-lane.best { border-left: 2px solid var(--accent-green); color: var(--accent-green); background: rgba(0, 255, 65, 0.02); }
+body.spy-sim .cone-milestone { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 9px; }
+body.spy-sim .cm-dot { width: 6px; height: 6px; background: var(--accent-cyan); border-radius: 50%; flex-shrink: 0; }
+body.spy-sim .cm-date { color: var(--accent-cyan); font-weight: bold; font-family: var(--font-data); min-width: 80px; }
+
+/* Chronology */
+body.spy-sim .chron-item { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+body.spy-sim .chron-line { width: 1px; background: var(--glass-border); flex-shrink: 0; }
+body.spy-sim .chron-dot { color: var(--accent-cyan); font-size: 10px; flex-shrink: 0; }
+body.spy-sim .chron-content { flex: 1; }
+body.spy-sim .chron-time { font-size: 8px; color: var(--accent-cyan); font-family: var(--font-data); }
+body.spy-sim .chron-title { font-size: 10px; color: var(--text-primary); line-height: 1.3; margin: 2px 0; }
+body.spy-sim .chron-impact { font-size: 8px; padding: 1px 4px; display: inline-block; border: 1px solid var(--border); margin-bottom: 3px; }
+body.spy-sim .chron-causality { font-size: 9px; color: var(--text-dim); line-height: 1.3; }
+body.spy-sim .causality-label { color: var(--accent-orange); font-weight: bold; font-size: 8px; }
+
+/* Snapshot */
+body.spy-sim .snap-item { padding: 6px; border: 1px solid var(--border); margin-bottom: 3px; background: var(--bg-card); }
+body.spy-sim .snap-latest { border-color: var(--accent-cyan); }
+body.spy-sim .snap-header { display: flex; justify-content: space-between; font-size: 9px; }
+body.spy-sim .snap-time { color: var(--text-primary); }
+body.spy-sim .snap-threat { color: var(--accent-orange); font-family: var(--font-data); }
+body.spy-sim .snap-top { font-size: 8px; color: var(--text-dim); margin-top: 2px; }
+body.spy-sim .snap-sc { margin-right: 4px; }
+
+/* Sparkline */
+body.spy-sim .sparkline-wrap { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
+body.spy-sim .spark-arrow { font-size: 8px; }
+
+/* Flash animation for new items */
+@keyframes flash-new-anim { 0% { background: rgba(0, 255, 65, 0.15); } 100% { background: transparent; } }
+body.spy-sim .flash-new { animation: flash-new-anim 1.5s ease-out; }
